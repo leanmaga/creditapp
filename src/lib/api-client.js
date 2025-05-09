@@ -347,140 +347,166 @@ export async function fetchUpcomingPayments() {
 }
 
 export async function fetchStatsData() {
-  // Obtener estadísticas generales
-  const { data: clientsCount, error: clientsError } = await supabase
-    .from("clients")
-    .select("id", { count: "exact", head: true });
+  try {
+    // 1. Consultas más seguras con manejo de errores mejorado
 
-  const { data: activeLoans, error: activeLoansError } = await supabase
-    .from("loans")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "active");
+    // Obtener estadísticas de clientes
+    const { data: clientsData, error: clientsError } = await supabase
+      .from("clients")
+      .select("*", { count: "exact" });
 
-  const { data: completedLoans, error: completedLoansError } = await supabase
-    .from("loans")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "completed");
+    const clientsCount = clientsError ? 0 : clientsData?.length || 0;
 
-  const { data: loansData, error: loansError } = await supabase
-    .from("loans")
-    .select("amount, interest_amount");
-
-  // Obtener estadísticas de cuotas
-  const { data: paidInstallments, error: paidError } = await supabase
-    .from("installments")
-    .select("amount", { count: "exact" })
-    .eq("paid", true);
-
-  const { data: pendingInstallments, error: pendingError } = await supabase
-    .from("installments")
-    .select("id", { count: "exact", head: true })
-    .eq("paid", false);
-
-  const { data: overdueInstallments, error: overdueError } = await supabase
-    .from("installments")
-    .select("id", { count: "exact", head: true })
-    .eq("paid", false)
-    .lt("due_date", new Date().toISOString());
-
-  if (
-    clientsError ||
-    activeLoansError ||
-    completedLoansError ||
-    loansError ||
-    paidError ||
-    pendingError ||
-    overdueError
-  ) {
-    console.error("Error fetching stats data");
-    throw new Error("Error al obtener estadísticas");
-  }
-
-  // Calcular totales
-  const totalLent = loansData.reduce(
-    (sum, loan) => sum + parseFloat(loan.amount),
-    0
-  );
-  const totalInterest = loansData.reduce(
-    (sum, loan) => sum + parseFloat(loan.interest_amount),
-    0
-  );
-  const totalCollected = paidInstallments.reduce(
-    (sum, inst) => sum + parseFloat(inst.amount),
-    0
-  );
-
-  // Generar datos mensuales para los últimos 6 meses
-  const monthlyData = [];
-  const now = new Date();
-
-  for (let i = 5; i >= 0; i--) {
-    const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-    const monthName = month.toLocaleString("es-AR", { month: "short" });
-
-    // Estas consultas serían más eficientes con una sola llamada usando SQL en la base de datos
-    // pero se separan aquí para facilitar la comprensión
-    const { data: monthLoans } = await supabase
+    // Obtener préstamos activos
+    const { data: activeLoansData, error: activeLoansError } = await supabase
       .from("loans")
-      .select("amount")
-      .gte("created_at", month.toISOString())
-      .lte("created_at", monthEnd.toISOString());
+      .select("*")
+      .eq("status", "active");
 
-    const { data: monthInterest } = await supabase
+    const activeLoansCount = activeLoansError
+      ? 0
+      : activeLoansData?.length || 0;
+
+    // Obtener préstamos completados
+    const { data: completedLoansData, error: completedLoansError } =
+      await supabase.from("loans").select("*").eq("status", "completed");
+
+    const completedLoansCount = completedLoansError
+      ? 0
+      : completedLoansData?.length || 0;
+
+    // Obtener todos los préstamos para cálculos
+    const { data, error: loansError } = await supabase
       .from("loans")
-      .select("interest_amount")
-      .gte("created_at", month.toISOString())
-      .lte("created_at", monthEnd.toISOString());
+      .select("amount, interest_amount, created_at");
 
-    const { data: monthCollected } = await supabase
+    // Usar una nueva variable en lugar de reasignar
+    const loansData = loansError ? [] : data || [];
+
+    // Obtener estadísticas de cuotas
+    const { data: instData, error: installmentsError } = await supabase
       .from("installments")
-      .select("amount")
-      .eq("paid", true)
-      .gte("payment_date", month.toISOString())
-      .lte("payment_date", monthEnd.toISOString());
+      .select("*");
 
-    const prestado = monthLoans.reduce(
-      (sum, loan) => sum + parseFloat(loan.amount),
-      0
-    );
-    const interes = monthInterest.reduce(
-      (sum, loan) => sum + parseFloat(loan.interest_amount),
-      0
-    );
-    const cobrado = monthCollected.reduce(
-      (sum, inst) => sum + parseFloat(inst.amount),
+    // Usar una nueva variable en lugar de reasignar
+    const installmentsData = installmentsError ? [] : instData || [];
+
+    // 2. Cálculo seguro de totales
+
+    // Filtramos las cuotas según su estado
+    const paidInstallments = installmentsData.filter((inst) => inst.paid) || [];
+    const pendingInstallments =
+      installmentsData.filter((inst) => !inst.paid) || [];
+    const overdueInstallments =
+      pendingInstallments.filter(
+        (inst) => new Date(inst.due_date) < new Date()
+      ) || [];
+
+    // Calculamos totales de manera segura
+    const totalLent = loansData.reduce(
+      (sum, loan) => sum + parseFloat(loan.amount || 0),
       0
     );
 
-    monthlyData.push({
-      month: monthName,
-      prestado,
-      cobrado,
-      interes,
-    });
+    const totalInterest = loansData.reduce(
+      (sum, loan) => sum + parseFloat(loan.interest_amount || 0),
+      0
+    );
+
+    const totalCollected = paidInstallments.reduce(
+      (sum, inst) => sum + parseFloat(inst.amount || 0),
+      0
+    );
+
+    // 3. Simplificamos los datos mensuales para evitar múltiples consultas
+
+    // Obtenemos los últimos 6 meses
+    const now = new Date();
+    const monthlyData = [];
+
+    for (let i = 5; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+      const monthName = monthStart.toLocaleString("es-AR", { month: "short" });
+
+      // Filtrar préstamos y cuotas de este mes
+      const monthLoans = loansData.filter((loan) => {
+        const loanDate = new Date(loan.created_at);
+        return loanDate >= monthStart && loanDate <= monthEnd;
+      });
+
+      const monthPaidInstallments = paidInstallments.filter((inst) => {
+        const paymentDate = new Date(inst.payment_date);
+        return paymentDate >= monthStart && paymentDate <= monthEnd;
+      });
+
+      // Calcular valores mensuales
+      const prestado = monthLoans.reduce(
+        (sum, loan) => sum + parseFloat(loan.amount || 0),
+        0
+      );
+
+      const interes = monthLoans.reduce(
+        (sum, loan) => sum + parseFloat(loan.interest_amount || 0),
+        0
+      );
+
+      const cobrado = monthPaidInstallments.reduce(
+        (sum, inst) => sum + parseFloat(inst.amount || 0),
+        0
+      );
+
+      monthlyData.push({
+        month: monthName,
+        prestado,
+        cobrado,
+        interes,
+      });
+    }
+
+    // 4. Retorno de datos estructurados
+    return {
+      totalClients: clientsCount,
+      activeLoans: activeLoansCount,
+      totalLent,
+      totalCollected,
+      totalInterest,
+      overdueInstallments: overdueInstallments.length,
+      monthlyData,
+      loanStatusDistribution: [
+        { name: "Activos", value: activeLoansCount },
+        { name: "Completados", value: completedLoansCount },
+      ],
+      installmentStatusDistribution: [
+        { name: "Pagadas", value: paidInstallments.length },
+        {
+          name: "Pendientes",
+          value: pendingInstallments.length - overdueInstallments.length,
+        },
+        { name: "Vencidas", value: overdueInstallments.length },
+      ],
+    };
+  } catch (error) {
+    console.error("Error completo en fetchStatsData:", error);
+    // En lugar de lanzar error, devolvemos datos vacíos o mínimos
+    // para que la interfaz pueda seguir funcionando
+    return {
+      totalClients: 0,
+      activeLoans: 0,
+      totalLent: 0,
+      totalCollected: 0,
+      totalInterest: 0,
+      overdueInstallments: 0,
+      monthlyData: [],
+      loanStatusDistribution: [
+        { name: "Activos", value: 0 },
+        { name: "Completados", value: 0 },
+      ],
+      installmentStatusDistribution: [
+        { name: "Pagadas", value: 0 },
+        { name: "Pendientes", value: 0 },
+        { name: "Vencidas", value: 0 },
+      ],
+    };
   }
-
-  return {
-    totalClients: clientsCount.count || 0,
-    activeLoans: activeLoans.count || 0,
-    totalLent,
-    totalCollected,
-    totalInterest,
-    overdueInstallments: overdueInstallments.count || 0,
-    monthlyData,
-    loanStatusDistribution: [
-      { name: "Activos", value: activeLoans.count || 0 },
-      { name: "Completados", value: completedLoans.count || 0 },
-    ],
-    installmentStatusDistribution: [
-      { name: "Pagadas", value: paidInstallments.count || 0 },
-      {
-        name: "Pendientes",
-        value:
-          (pendingInstallments.count || 0) - (overdueInstallments.count || 0),
-      },
-      { name: "Vencidas", value: overdueInstallments.count || 0 },
-    ],
-  };
 }
