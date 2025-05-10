@@ -2,24 +2,69 @@
 
 import { supabase } from "./supabase";
 
-// Cliente methods
 export async function fetchClients() {
+  try {
+    // Se obtiene el usuario actual
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Si no hay usuario, devolver array vacío
+    if (!user) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("client_loan_counts")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("name");
+
+    if (error) {
+      console.error("Error fetching clients:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error("Error fetching clients:", error);
+    return [];
+  }
+}
+
+export async function createClient(clientData) {
+  // Se obtiene el usuario actual
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const { data, error } = await supabase
-    .from("client_loan_counts")
-    .select("*")
-    .order("name");
+    .from("clients")
+    .insert([
+      {
+        name: clientData.name,
+        phone: clientData.phone || null,
+        email: clientData.email || null,
+        address: clientData.address || null,
+        dni: clientData.dni || null,
+        notes: clientData.notes || null,
+        user_id: user.id, // Añadir ID del usuario
+      },
+    ])
+    .select()
+    .single();
 
   if (error) {
-    console.error("Error fetching clients:", error);
+    console.error("Error creating client:", error);
     throw new Error(error.message);
   }
 
-  return data;
+  return data.id;
 }
 
 export async function fetchClientById(clientId, forEdit = false) {
   try {
-    // Para cualquier caso, primero obtén los datos completos del cliente desde la tabla clients
+    // Para cualquier caso, primero obtén los datos completos del cliente
     const { data: clientDetails, error: clientDetailsError } = await supabase
       .from("clients")
       .select("*")
@@ -31,12 +76,12 @@ export async function fetchClientById(clientId, forEdit = false) {
       return null;
     }
 
-    // Si es solo para edición, devuelve los datos del cliente sin préstamos
+    // RLS asegurará que solo se obtengan préstamos del usuario actual
+    // No necesitas filtrar explícitamente por user_id en estas consultas
     if (forEdit) {
       return clientDetails;
     }
 
-    // Si es para la vista de detalles, obtén también los préstamos
     const { data: loans, error: loansError } = await supabase
       .from("loans")
       .select(
@@ -50,43 +95,16 @@ export async function fetchClientById(clientId, forEdit = false) {
 
     if (loansError) {
       console.error("Error fetching client loans:", loansError);
-      // No lanzamos error para que al menos se muestren los datos del cliente
     }
 
-    // Devuelve los datos completos del cliente más los préstamos
     return {
       ...clientDetails,
       loans: loans || [],
-      // Si estabas obteniendo otros datos de la vista client_loan_counts, podrías añadirlos aquí
     };
   } catch (error) {
     console.error("Error completo:", error);
     throw error;
   }
-}
-
-export async function createClient(clientData) {
-  const { data, error } = await supabase
-    .from("clients")
-    .insert([
-      {
-        name: clientData.name,
-        phone: clientData.phone || null,
-        email: clientData.email || null,
-        address: clientData.address || null,
-        dni: clientData.dni || null,
-        notes: clientData.notes || null,
-      },
-    ])
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error creating client:", error);
-    throw new Error(error.message);
-  }
-
-  return data.id;
 }
 
 export async function updateClient(clientId, clientData) {
@@ -128,9 +146,14 @@ export async function deleteClient(clientId) {
   return true;
 }
 
-// Loan methods
 export async function createLoan(loanDetails) {
-  // Usar la función del servidor para crear un préstamo con sus cuotas
+  // Obtener usuario actual antes de llamar a la función RPC
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Llamar a la función RPC (ya no necesitas pasar user_id explícitamente,
+  // porque ahora la función RPC usa auth.uid() internamente)
   const { data, error } = await supabase.rpc("create_loan_with_installments", {
     p_client_id: loanDetails.clientId,
     p_amount: loanDetails.amount,
@@ -144,33 +167,6 @@ export async function createLoan(loanDetails) {
   }
 
   return data; // Retorna el ID del préstamo creado
-}
-
-export async function fetchLoanById(clientId, loanId) {
-  const { data, error } = await supabase
-    .from("loans")
-    .select(
-      `
-      *,
-      installments(*),
-      clients(name)
-    `
-    )
-    .eq("id", loanId)
-    .eq("client_id", clientId)
-    .single();
-
-  if (error) {
-    console.error("Error fetching loan:", error);
-    return null;
-  }
-
-  // Formatear la respuesta para mantener compatibilidad con el mock
-  return {
-    ...data,
-    client_name: data.clients?.name || "Cliente",
-    installments: data.installments || [],
-  };
 }
 
 export async function deleteLoan(clientId, loanId) {
@@ -229,9 +225,23 @@ export async function payInstallment(
   return true;
 }
 
-// Dashboard stats
 export async function fetchDashboardStats() {
   try {
+    // Obtener el usuario actual
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Si no hay usuario autenticado, devolver datos predeterminados
+    if (!user) {
+      return {
+        totalClients: 0,
+        activeLoans: 0,
+        totalLent: 0,
+        overdueInstallments: 0,
+      };
+    }
+
     // Obtener número total de clientes
     const {
       data: clientsData,
@@ -239,7 +249,8 @@ export async function fetchDashboardStats() {
       error: clientsError,
     } = await supabase
       .from("clients")
-      .select("id", { count: "exact", head: true });
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id);
 
     // Obtener préstamos activos
     const {
@@ -249,27 +260,34 @@ export async function fetchDashboardStats() {
     } = await supabase
       .from("loans")
       .select("id", { count: "exact", head: true })
-      .eq("status", "active");
+      .eq("status", "active")
+      .eq("user_id", user.id);
 
     // Obtener monto total prestado
     const { data: totalLentData, error: totalLentError } = await supabase
       .from("loans")
-      .select("amount");
+      .select("amount")
+      .eq("user_id", user.id);
 
-    // Obtener cuotas vencidas
-    const {
-      data: overdueData,
-      count: overdueCount,
-      error: overdueError,
-    } = await supabase
-      .from("installments")
-      .select("id", { count: "exact", head: true })
-      .eq("paid", false)
-      .lt("due_date", new Date().toISOString());
+    // Para las cuotas vencidas, primero obtener los IDs de los préstamos
+    const { data: loanIds, error: loanIdsError } = await supabase
+      .from("loans")
+      .select("id")
+      .eq("user_id", user.id);
 
-    if (clientsError || loansError || totalLentError || overdueError) {
-      console.error("Error fetching dashboard stats");
-      throw new Error("Error al obtener estadísticas");
+    // Si hay préstamos, usarlos para filtrar cuotas vencidas
+    let overdueCount = 0;
+    if (loanIds && loanIds.length > 0) {
+      const loanIdValues = loanIds.map((loan) => loan.id);
+
+      const { count, error: overdueError } = await supabase
+        .from("installments")
+        .select("id", { count: "exact", head: true })
+        .eq("paid", false)
+        .lt("due_date", new Date().toISOString())
+        .in("loan_id", loanIdValues);
+
+      overdueCount = count || 0;
     }
 
     const totalLent = (totalLentData || []).reduce(
@@ -281,79 +299,135 @@ export async function fetchDashboardStats() {
       totalClients: clientsCount || 0,
       activeLoans: activeLoansCount || 0,
       totalLent,
-      overdueInstallments: overdueCount || 0,
+      overdueInstallments: overdueCount,
     };
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
-    throw error;
+    // En caso de error, devolver objeto con valores predeterminados
+    return {
+      totalClients: 0,
+      activeLoans: 0,
+      totalLent: 0,
+      overdueInstallments: 0,
+    };
   }
 }
 
 export async function fetchRecentLoans() {
-  const { data, error } = await supabase
-    .from("loans")
-    .select(
+  try {
+    // Obtener el usuario actual
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Si no hay usuario, devolver array vacío
+    if (!user) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("loans")
+      .select(
+        `
+        *,
+        clients(name)
       `
-      *,
-      clients(name)
-    `
-    )
-    .order("created_at", { ascending: false })
-    .limit(5);
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
 
-  if (error) {
+    if (error) {
+      console.error("Error fetching recent loans:", error);
+      return [];
+    }
+
+    // Formatear la respuesta, asegurándose que data no sea null
+    return (data || []).map((loan) => ({
+      ...loan,
+      client_name: loan.clients?.name || "Cliente",
+    }));
+  } catch (error) {
     console.error("Error fetching recent loans:", error);
-    throw new Error(error.message);
+    return [];
   }
-
-  // Formatear la respuesta para mantener compatibilidad con el mock
-  return data.map((loan) => ({
-    ...loan,
-    client_name: loan.clients?.name || "Cliente",
-  }));
 }
 
 export async function fetchUpcomingPayments() {
-  const today = new Date();
-  const nextMonth = new Date();
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  try {
+    // Obtener el usuario actual
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const { data, error } = await supabase
-    .from("installments")
-    .select(
+    // Si no hay usuario, devolver array vacío
+    if (!user) {
+      return [];
+    }
+
+    // Primero, obtener los IDs de los préstamos que pertenecen al usuario
+    const { data: userLoans, error: loansError } = await supabase
+      .from("loans")
+      .select("id")
+      .eq("user_id", user.id);
+
+    if (loansError || !userLoans || userLoans.length === 0) {
+      return [];
+    }
+
+    // Extraer los IDs de los préstamos
+    const loanIds = userLoans.map((loan) => loan.id);
+
+    // Ahora, usar estos IDs para obtener las cuotas
+    const today = new Date();
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    const { data, error } = await supabase
+      .from("installments")
+      .select(
+        `
+        *,
+        loans(id, months, client_id, user_id, clients(name))
       `
-      *,
-      loans(id, months, client_id, clients(name))
-    `
-    )
-    .eq("paid", false)
-    .lte("due_date", nextMonth.toISOString())
-    .order("due_date")
-    .limit(5);
+      )
+      .eq("paid", false)
+      .lte("due_date", nextMonth.toISOString())
+      .in("loan_id", loanIds) // Usar IN con el array de IDs
+      .order("due_date")
+      .limit(5);
 
-  if (error) {
+    if (error) {
+      console.error("Error fetching upcoming payments:", error);
+      return [];
+    }
+
+    // Formatear la respuesta, asegurándose que data no sea null
+    return (data || []).map((installment) => ({
+      ...installment,
+      client_name: installment.loans?.clients?.name || "Cliente",
+      client_id: installment.loans?.client_id,
+      loan_id: installment.loans?.id,
+      total_installments: installment.loans?.months || 0,
+    }));
+  } catch (error) {
     console.error("Error fetching upcoming payments:", error);
-    throw new Error(error.message);
+    return [];
   }
-
-  // Formatear la respuesta para mantener compatibilidad con el mock
-  return data.map((installment) => ({
-    ...installment,
-    client_name: installment.loans?.clients?.name || "Cliente",
-    client_id: installment.loans?.client_id,
-    loan_id: installment.loans?.id,
-    total_installments: installment.loans?.months || 0,
-  }));
 }
 
 export async function fetchStatsData() {
   try {
-    // 1. Consultas más seguras con manejo de errores mejorado
+    // Obtener el usuario actual
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     // Obtener estadísticas de clientes
     const { data: clientsData, error: clientsError } = await supabase
       .from("clients")
-      .select("*", { count: "exact" });
+      .select("*", { count: "exact" })
+      .eq("user_id", user.id); // Filtrar por usuario
 
     const clientsCount = clientsError ? 0 : clientsData?.length || 0;
 
@@ -361,7 +435,8 @@ export async function fetchStatsData() {
     const { data: activeLoansData, error: activeLoansError } = await supabase
       .from("loans")
       .select("*")
-      .eq("status", "active");
+      .eq("status", "active")
+      .eq("user_id", user.id); // Filtrar por usuario
 
     const activeLoansCount = activeLoansError
       ? 0
@@ -369,7 +444,11 @@ export async function fetchStatsData() {
 
     // Obtener préstamos completados
     const { data: completedLoansData, error: completedLoansError } =
-      await supabase.from("loans").select("*").eq("status", "completed");
+      await supabase
+        .from("loans")
+        .select("*")
+        .eq("status", "completed")
+        .eq("user_id", user.id); // Filtrar por usuario
 
     const completedLoansCount = completedLoansError
       ? 0
@@ -378,15 +457,17 @@ export async function fetchStatsData() {
     // Obtener todos los préstamos para cálculos
     const { data, error: loansError } = await supabase
       .from("loans")
-      .select("amount, interest_amount, created_at");
+      .select("amount, interest_amount, created_at")
+      .eq("user_id", user.id); // Filtrar por usuario
 
     // Usar una nueva variable en lugar de reasignar
     const loansData = loansError ? [] : data || [];
 
-    // Obtener estadísticas de cuotas
+    // Obtener estadísticas de cuotas (necesitamos filtrar por usuario)
     const { data: instData, error: installmentsError } = await supabase
       .from("installments")
-      .select("*");
+      .select("*, loans!inner(user_id)")
+      .eq("loans.user_id", user.id); // Usamos una relación inner para filtrar por usuario
 
     // Usar una nueva variable en lugar de reasignar
     const installmentsData = installmentsError ? [] : instData || [];
@@ -418,7 +499,7 @@ export async function fetchStatsData() {
       0
     );
 
-    // 3. Simplificamos los datos mensuales para evitar múltiples consultas
+    // 3. Datos mensuales
 
     // Obtenemos los últimos 6 meses
     const now = new Date();
@@ -488,8 +569,7 @@ export async function fetchStatsData() {
     };
   } catch (error) {
     console.error("Error completo en fetchStatsData:", error);
-    // En lugar de lanzar error, devolvemos datos vacíos o mínimos
-    // para que la interfaz pueda seguir funcionando
+    // En lugar de lanzar error, devolvemos datos vacíos
     return {
       totalClients: 0,
       activeLoans: 0,
