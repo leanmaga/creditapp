@@ -108,8 +108,6 @@ export async function fetchClientById(clientId, forEdit = false) {
 }
 
 export async function updateClient(clientId, clientData) {
-  console.log("Actualizando cliente:", clientId, "con datos:", clientData);
-
   const { data, error } = await supabase
     .from("clients")
     .update({
@@ -130,7 +128,6 @@ export async function updateClient(clientId, clientData) {
     throw new Error(error.message);
   }
 
-  console.log("Cliente actualizado con éxito:", data);
   return data;
 }
 
