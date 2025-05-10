@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 
 export async function middleware(req) {
-  // Simplemente permite todas las solicitudes para probar
   return NextResponse.next();
 }
 

@@ -18,11 +18,10 @@ export default function Home() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      console.log("Checking auth...");
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      console.log("Auth session:", session);
+
       if (!session) {
         setIsCheckingAuth(false);
       }
@@ -31,7 +30,6 @@ export default function Home() {
     checkAuth();
   }, []);
 
-  // En tu componente de login
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(null);
@@ -42,10 +40,7 @@ export default function Home() {
         email,
         password,
       });
-
       if (error) throw error;
-
-      // Forzar redirección mediante recarga completa
       window.location.href = "/dashboard";
     } catch (error) {
       setError(error.message);
@@ -54,12 +49,11 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-br from-blue-900 to-gray-900">
-      {/* El resto del contenido permanece igual */}
-      <div className="flex-grow flex flex-col lg:flex-row items-center">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-blue-900 to-gray-900 ">
+      <div className="flex-grow flex flex-col lg:flex-row items-center ">
         {/* Lado izquierdo - Descripción */}
         <div className="w-full lg:w-1/2 p-8 lg:p-16">
-          <h1 className="text-4xl lg:text-6xl font-bold text-white mb-6">
+          <h1 className="text-4xl lg:text-6xl font-bold text-white mb-6 uperca">
             Gestiona tus préstamos de forma eficiente
           </h1>
           <p className="text-xl text-blue-200 mb-8">

@@ -122,6 +122,17 @@ export function Navbar() {
                     <span className="hidden md:block">Simulador</span>
                   </span>
                 </Link>
+                <Link
+                  href="/profile"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive(
+                    "/profile"
+                  )}`}
+                >
+                  <span className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    <span className="hidden md:block">Mi Perfil</span>
+                  </span>
+                </Link>
               </nav>
             ) : null}
 
@@ -218,6 +229,17 @@ export function Navbar() {
                 <span className="flex items-center gap-2">
                   <Calculator className="h-4 w-4" />
                   <span>Simulador</span>
+                </span>
+              </Link>
+              <Link
+                href="/profile"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive(
+                  "/profile"
+                )}`}
+              >
+                <span className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  <span className="hidden md:block">Mi Perfil</span>
                 </span>
               </Link>
               <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-800">

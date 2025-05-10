@@ -110,12 +110,10 @@ const SimuladorDePrestamos = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-900 via-[#0d1b2a] to-black p-4 sm:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-gray-900 p-4 sm:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-clip-text text-white">
-            {appTitle}
-          </h1>
+          <h1 className="text-3xl font-bold mb-6 text-white">{appTitle}</h1>
           <p className="text-gray-400 text-sm sm:text-base">
             Calcula tu préstamo personal de forma rápida y sencilla.
           </p>

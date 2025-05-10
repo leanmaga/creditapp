@@ -45,10 +45,7 @@ export function ClientDetailEdit({ clientId }) {
   useEffect(() => {
     const getClientData = async () => {
       try {
-        console.log("Buscando cliente con ID:", clientId);
-        // Pasar true como segundo parámetro para indicar que es para edición
         const data = await fetchClientById(clientId, true);
-        console.log("Datos recibidos para edición:", data);
 
         if (data) {
           setClientData({
@@ -88,7 +85,6 @@ export function ClientDetailEdit({ clientId }) {
     setIsSubmitting(true);
 
     try {
-      console.log("Datos a enviar:", clientData);
       await updateClient(clientId, clientData);
 
       toast({
