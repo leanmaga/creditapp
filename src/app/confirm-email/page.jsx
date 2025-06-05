@@ -8,8 +8,7 @@ import Link from "next/link";
 
 export default function ConfirmEmailPage() {
   const router = useRouter();
-  const [status, setStatus] =
-    (useState < "loading") | "success" | ("error" > "loading");
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
     const checkSession = async () => {
