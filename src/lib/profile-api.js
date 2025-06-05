@@ -42,9 +42,10 @@ export async function updateEmail(newEmail, password) {
 
   if (verifyError) throw new Error("Contraseña incorrecta");
 
-  const { data, error } = await supabase.auth.updateUser({
-    email: newEmail,
-  });
+  const { data, error } = await supabase.auth.updateUser(
+    { email: newEmail },
+    { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/confirm-email` }
+  );
 
   if (error) throw error;
 

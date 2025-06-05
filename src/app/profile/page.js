@@ -77,7 +77,14 @@ export default function ProfilePage() {
     setSuccessMessage("");
     setErrorMessage("");
     setIsLoading(true);
-
+    if (
+      profileForm.fullName === profile.fullName &&
+      profileForm.companyName === profile.companyName
+    ) {
+      setErrorMessage("No se detectaron cambios para guardar");
+      setIsLoading(false);
+      return;
+    }
     try {
       await updateProfile(profileForm);
       setSuccessMessage("Perfil actualizado correctamente");
@@ -169,6 +176,7 @@ export default function ProfilePage() {
 
     try {
       await deleteAccount(deleteForm.password);
+      setDeleteForm({ password: "" });
       router.push("/");
     } catch (error) {
       setErrorMessage(error.message);

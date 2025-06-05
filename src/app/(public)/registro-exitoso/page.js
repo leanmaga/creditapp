@@ -119,10 +119,10 @@ export default function RegistroExitoso() {
 
           <p className="text-sm text-gray-300">
             <Link
-              href="mailto:soporte@prestamosapp.com"
+              href="mailto:patagoniascript@gmail.com"
               className="text-blue-400 hover:text-blue-300"
             >
-              ¿Necesitas ayuda? Contacta con soporte@prestamosapp.com
+              ¿Necesitas ayuda? Contacta con soporte
             </Link>
           </p>
         </div>
