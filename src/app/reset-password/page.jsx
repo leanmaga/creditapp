@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -21,19 +22,29 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const checkSession = async () => {
       try {
+        // Obtener parámetros de la URL
+        const token = searchParams.get("token");
+        const type = searchParams.get("type");
+
+        console.log("Reset password - URL params:", { token, type });
+
         // Verificar si hay una sesión válida para reset de contraseña
         const {
           data: { session },
           error,
         } = await supabase.auth.getSession();
 
+        console.log("Reset password - Session:", session);
+
         if (error) {
           console.error("Error checking session:", error);
           setError("Sesión inválida o expirada");
           setIsValidSession(false);
         } else if (session) {
+          console.log("Valid session found for password reset");
           setIsValidSession(true);
         } else {
+          console.log("No valid session for password reset");
           setError(
             "Enlace inválido o expirado. Solicita un nuevo enlace de recuperación."
           );
@@ -52,7 +63,18 @@ export default function ResetPasswordPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log(
+        "Auth state change in reset password:",
+        event,
+        session?.user?.email
+      );
+
       if (event === "PASSWORD_RECOVERY") {
+        console.log("Password recovery event detected");
+        setIsValidSession(true);
+        setIsCheckingSession(false);
+      } else if (event === "SIGNED_IN" && session) {
+        console.log("User signed in during password reset");
         setIsValidSession(true);
         setIsCheckingSession(false);
       }
@@ -61,7 +83,7 @@ export default function ResetPasswordPage() {
     checkSession();
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [searchParams]);
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
@@ -94,6 +116,7 @@ export default function ResetPasswordPage() {
 
       if (error) throw error;
 
+      console.log("Password updated successfully");
       setSuccess(true);
 
       // Redirigir al dashboard después de un momento
@@ -111,9 +134,9 @@ export default function ResetPasswordPage() {
   if (isCheckingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-gray-900">
-        <div className="text-white">
+        <div className="text-white text-center">
           <div className="animate-spin rounded-full border-t-4 border-blue-500 h-8 w-8 mx-auto mb-4"></div>
-          <p>Verificando sesión...</p>
+          <p>Verificando enlace de recuperación...</p>
         </div>
       </div>
     );
@@ -159,7 +182,7 @@ export default function ResetPasswordPage() {
             {error || "El enlace de recuperación es inválido o ha expirado."}
           </p>
           <div className="mt-8 space-y-4">
-            <Link href="/">
+            <Link href="/forgot-password">
               <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors focus:ring focus:ring-blue-500/50">
                 Solicitar nuevo enlace
               </button>

@@ -58,9 +58,15 @@ export default function Home() {
     setResetMessage("");
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
+      // Importar la función de redirección
+      const { getResetPasswordConfig } = await import(
+        "../utils/auth-redirects"
+      );
+
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        resetEmail,
+        getResetPasswordConfig()
+      );
 
       if (error) throw error;
 

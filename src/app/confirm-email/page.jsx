@@ -1,42 +1,99 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
 export default function ConfirmEmailPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    const checkSession = async () => {
+    const handleEmailConfirmation = async () => {
       try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+        // Obtener parámetros de la URL
+        const token = searchParams.get("token");
+        const type = searchParams.get("type");
 
-        if (error) {
-          console.error("Error al obtener sesión:", error);
-          setStatus("error");
-          return;
-        }
+        console.log("URL params:", { token, type });
 
-        if (session) {
-          setStatus("success");
+        // Si es una confirmación de email change
+        if (type === "email_change" || type === "signup") {
+          // Obtener la sesión actual
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession();
+
+          console.log("Session:", session);
+
+          if (sessionError) {
+            console.error("Error al obtener sesión:", sessionError);
+            setErrorMessage("Error al verificar la sesión");
+            setStatus("error");
+            return;
+          }
+
+          if (session?.user) {
+            console.log("User confirmed:", session.user);
+            setStatus("success");
+
+            // Redirigir después de 3 segundos
+            setTimeout(() => {
+              router.push("/dashboard");
+            }, 3000);
+          } else {
+            console.log("No session found");
+            setErrorMessage("No se pudo confirmar el cambio de email");
+            setStatus("error");
+          }
         } else {
-          setStatus("error");
+          // Para otros tipos de confirmación
+          const {
+            data: { session },
+            error,
+          } = await supabase.auth.getSession();
+
+          if (error) {
+            console.error("Error al obtener sesión:", error);
+            setErrorMessage(error.message);
+            setStatus("error");
+            return;
+          }
+
+          if (session) {
+            setStatus("success");
+          } else {
+            setErrorMessage("Enlace inválido o expirado");
+            setStatus("error");
+          }
         }
       } catch (err) {
-        console.error("Error verificando sesión:", err);
+        console.error("Error verificando confirmación:", err);
+        setErrorMessage("Error inesperado al confirmar email");
         setStatus("error");
       }
     };
 
-    checkSession();
-  }, []);
+    // Escuchar cambios de autenticación
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state change:", event, session?.user?.email);
+
+      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        setStatus("success");
+      }
+    });
+
+    handleEmailConfirmation();
+
+    return () => subscription.unsubscribe();
+  }, [router, searchParams]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -57,7 +114,7 @@ export default function ConfirmEmailPage() {
 
         <h1 className="mt-6 text-2xl font-bold text-white">
           {status === "success"
-            ? "Correo confirmado"
+            ? "Email confirmado"
             : status === "error"
             ? "Error al confirmar"
             : "Confirmando..."}
@@ -65,10 +122,11 @@ export default function ConfirmEmailPage() {
 
         <p className="mt-4 text-blue-200">
           {status === "success"
-            ? "Tu nuevo correo ha sido confirmado correctamente. Ya podés continuar usando la app."
+            ? "Tu email ha sido confirmado correctamente. Ya puedes continuar usando la app."
             : status === "error"
-            ? "No pudimos verificar tu correo. Asegurate de haber usado un enlace válido y actualizado."
-            : "Verificando tu correo..."}
+            ? errorMessage ||
+              "No pudimos verificar tu email. Asegúrate de haber usado un enlace válido y actualizado."
+            : "Verificando tu email..."}
         </p>
 
         <div className="mt-8 space-y-4">
@@ -81,7 +139,7 @@ export default function ConfirmEmailPage() {
           )}
 
           {status === "error" && (
-            <Link href="/login">
+            <Link href="/">
               <button className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors focus:ring focus:ring-red-500/50">
                 Volver a Iniciar Sesión
               </button>
@@ -93,7 +151,7 @@ export default function ConfirmEmailPage() {
               href="mailto:patagoniascript@gmail.com"
               className="text-blue-400 hover:text-blue-300"
             >
-              ¿Necesitás ayuda? Contactanos en soporte
+              ¿Necesitas ayuda? Contactanos en soporte
             </Link>
           </p>
         </div>

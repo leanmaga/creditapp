@@ -25,6 +25,11 @@ export default function ForgotPassword() {
     }
 
     try {
+      // Importar la función de redirección
+      const { getResetPasswordConfig } = await import(
+        "../utils/auth-redirects"
+      );
+
       // Primero verificar si el email existe en nuestro sistema
       const { data: users, error: checkError } = await supabase
         .from("profiles")
@@ -34,16 +39,12 @@ export default function ForgotPassword() {
 
       // También verificar en auth.users si no encontramos en profiles
       if (!users || users.length === 0) {
-        // Intentar verificar de otra manera - haciendo una petición que no comprometa seguridad
+        // Intentar verificar de otra manera
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
           email,
-          {
-            redirectTo: `${window.location.origin}/reset-password`,
-          }
+          getResetPasswordConfig()
         );
 
-        // Supabase retorna éxito incluso si el email no existe por seguridad
-        // Pero podemos dar una respuesta más informativa
         if (!resetError) {
           setMessage(
             "Si existe una cuenta con este correo, recibirás un enlace de recuperación en unos minutos."
@@ -54,9 +55,10 @@ export default function ForgotPassword() {
         }
       } else {
         // El email existe, proceder con el reset
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        });
+        const { error } = await supabase.auth.resetPasswordForEmail(
+          email,
+          getResetPasswordConfig()
+        );
 
         if (error) throw error;
 

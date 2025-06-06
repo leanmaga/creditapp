@@ -1,5 +1,9 @@
 // lib/profile-api.js
 import { supabase } from "./supabase";
+import {
+  getResetPasswordConfig,
+  getEmailUpdateConfig,
+} from "../utils/auth-redirects";
 
 // Actualizar datos del perfil
 export async function updateProfile(profileData) {
@@ -42,9 +46,10 @@ export async function updateEmail(newEmail, password) {
 
   if (verifyError) throw new Error("Contraseña incorrecta");
 
+  // Usar la configuración centralizada
   const { data, error } = await supabase.auth.updateUser(
     { email: newEmail },
-    { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/confirm-email` }
+    getEmailUpdateConfig()
   );
 
   if (error) throw error;
@@ -79,7 +84,6 @@ export async function updatePassword(currentPassword, newPassword) {
 }
 
 // Eliminar cuenta
-// Updated deleteAccount function for profile-api.js
 export async function deleteAccount(password) {
   try {
     // 1. Verify credentials
@@ -97,9 +101,6 @@ export async function deleteAccount(password) {
     if (verifyError) throw new Error("Contraseña incorrecta");
 
     // 2. Delete all user data in correct order to respect foreign key constraints
-    // We'll use transactions to ensure all-or-nothing deletion
-
-    // First get all clients to find their associated loans and installments
     const { data: clientsData, error: clientsError } = await supabase
       .from("clients")
       .select("id")
@@ -112,7 +113,6 @@ export async function deleteAccount(password) {
 
     // If the user has clients, delete them (and their loans and installments through cascade)
     if (clientsData && clientsData.length > 0) {
-      // Delete clients (will cascade to loans and installments if CASCADE is set up)
       const { error: deleteClientsError } = await supabase
         .from("clients")
         .delete()
@@ -140,17 +140,12 @@ export async function deleteAccount(password) {
       user.id
     );
 
-    // If admin API is not available, use the standard method
     if (deleteUserError) {
       console.error("Error using admin API:", deleteUserError);
-      // Try with alternative method
       const { error: altDeleteError } = await supabase.rpc("delete_user");
 
       if (altDeleteError) {
-        // If RPC fails, fall back to regular delete
         console.error("Error with RPC delete_user:", altDeleteError);
-
-        // As a fallback, try standard auth
         const { error: stdDeleteError } = await supabase.auth.deleteUser();
 
         if (stdDeleteError) {
