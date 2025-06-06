@@ -107,6 +107,36 @@ export async function fetchClientById(clientId, forEdit = false) {
   }
 }
 
+export async function fetchLoanById(clientId, loanId) {
+  try {
+    const { data: loan, error: loanError } = await supabase
+      .from("loans")
+      .select(
+        `
+        *,
+        clients(name),
+        installments(*)
+      `
+      )
+      .eq("id", loanId)
+      .eq("client_id", clientId)
+      .single();
+
+    if (loanError) {
+      console.error("Error fetching loan:", loanError);
+      throw new Error("Préstamo no encontrado");
+    }
+
+    return {
+      ...loan,
+      client_name: loan.clients?.name || "Cliente",
+    };
+  } catch (error) {
+    console.error("Error fetching loan:", error);
+    throw error;
+  }
+}
+
 export async function updateClient(clientId, clientData) {
   const { data, error } = await supabase
     .from("clients")

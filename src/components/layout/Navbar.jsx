@@ -233,13 +233,14 @@ export function Navbar() {
               </Link>
               <Link
                 href="/profile"
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive(
+                className={`block px-3 py-2 rounded-md text-sm font-medium ${isActive(
                   "/profile"
                 )}`}
+                onClick={() => setIsMenuOpen(false)}
               >
                 <span className="flex items-center gap-2">
                   <User className="h-4 w-4" />
-                  <span className="hidden md:block">Mi Perfil</span>
+                  <span>Mi Perfil</span>
                 </span>
               </Link>
               <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-800">
