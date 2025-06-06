@@ -27,7 +27,7 @@ export default function ForgotPassword() {
     try {
       // Importar la función de redirección
       const { getResetPasswordConfig } = await import(
-        "../utils/auth-redirects"
+        "../../utils/auth-redirects"
       );
 
       // Primero verificar si el email existe en nuestro sistema
