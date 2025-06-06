@@ -16,6 +16,7 @@ import {
   LogOut,
   User,
   ShoppingCart,
+  NotebookText,
 } from "lucide-react";
 
 export function Navbar() {
@@ -111,6 +112,18 @@ export function Navbar() {
                   <span className="flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4" />
                     <span className="hidden md:block">Productos</span>
+                  </span>
+                </Link>
+                <Link
+                  href="/gestion-documentos"
+                  className={`block px-3 py-2 rounded-md text-sm font-medium ${isActive(
+                    "/gestion-documentos"
+                  )}`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <span className="flex items-center gap-2">
+                    <NotebookText className="h-4 w-4" />
+                    <span>Documentos</span>
                   </span>
                 </Link>
                 <Link
@@ -229,7 +242,19 @@ export function Navbar() {
               >
                 <span className="flex items-center gap-2">
                   <ShoppingCart className="h-4 w-4" />
-                  <span>Productos"</span>
+                  <span>Productos</span>
+                </span>
+              </Link>
+              <Link
+                href="/gestion-documentos"
+                className={`block px-3 py-2 rounded-md text-sm font-medium ${isActive(
+                  "/gestion-documentos"
+                )}`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <span className="flex items-center gap-2">
+                  <NotebookText className="h-4 w-4" />
+                  <span>Documentos</span>
                 </span>
               </Link>
               <Link
