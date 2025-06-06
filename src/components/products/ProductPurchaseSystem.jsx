@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import {
   ShoppingCart,
   Package,
@@ -39,95 +40,41 @@ import {
   TrendingUp,
   Plus,
   Filter,
+  Loader2,
 } from "lucide-react";
+import {
+  createProductRequest,
+  fetchProductRequests,
+  updateRequestStatus,
+  createPurchasedProduct,
+  fetchPurchasedProducts,
+  getProductPurchaseStats,
+  fetchClients,
+  deleteProductRequest,
+} from "@/lib/api-client";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 export default function ProductPurchaseSystem() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("requests");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock data - reemplazar con llamadas reales a la API
+  // Estados para datos reales
   const [stats, setStats] = useState({
-    pendingRequests: 3,
-    approvedRequests: 2,
-    activeProducts: 5,
-    totalProfits: 150000,
+    pendingRequests: 0,
+    approvedRequests: 0,
+    activeProducts: 0,
+    totalProfits: 0,
   });
 
-  const [clients, setClients] = useState([
-    { id: 1, name: "Juan Pérez" },
-    { id: 2, name: "María González" },
-    { id: 3, name: "Carlos Ruiz" },
-  ]);
-
-  // Solicitudes de compra de productos
-  const [purchaseRequests, setPurchaseRequests] = useState([
-    {
-      id: 1,
-      client_id: 2,
-      clients: { name: "María González" },
-      product_name: "iPhone 15 Pro Max 256GB",
-      product_url: "https://apple.com/iphone-15-pro",
-      estimated_price: 450000,
-      requested_price: 430000,
-      store: "Apple Store Unicenter",
-      reason: "Necesito el teléfono para trabajo, encontré esta oferta",
-      request_date: "2025-06-06",
-      status: "pending",
-      months: 12,
-      interest_rate: 35,
-      urgency: "medium",
-      client_credit_score: "good",
-      internal_notes: "Cliente confiable, 3er préstamo",
-    },
-    {
-      id: 2,
-      client_id: 1,
-      clients: { name: "Juan Pérez" },
-      product_name: 'Samsung Smart TV 65" QLED',
-      product_url: "https://mercadolibre.com.ar/tv-samsung",
-      estimated_price: 380000,
-      requested_price: 365000,
-      store: "MercadoLibre - Vendedor Premium",
-      reason: "Para la familia, oferta por tiempo limitado",
-      request_date: "2025-06-05",
-      status: "approved",
-      months: 18,
-      interest_rate: 30,
-      urgency: "high",
-      client_credit_score: "excellent",
-      internal_notes: "Cliente VIP, siempre paga a tiempo",
-    },
-  ]);
-
-  // Productos ya comprados
-  const [purchasedProducts, setPurchasedProducts] = useState([
-    {
-      id: 1,
-      client_id: 3,
-      clients: { name: "Carlos Ruiz" },
-      product_name: "Notebook Lenovo Legion Gaming",
-      actual_purchase_price: 485000,
-      agreed_client_price: 500000,
-      direct_profit: 15000,
-      purchase_date: "2025-06-04",
-      delivery_date: "2025-06-05",
-      status: "delivered",
-      months: 24,
-      interest_rate: 32,
-      monthly_payment: 28500,
-      total_amount: 684000,
-      paid_installments: 1,
-      total_installments: 24,
-      next_payment_date: "2025-07-05",
-      total_paid: 28500,
-      store: "Compumundo",
-    },
-  ]);
-
-  const [filteredRequests, setFilteredRequests] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [purchaseRequests, setPurchaseRequests] = useState([]);
+  const [purchasedProducts, setPurchasedProducts] = useState([]);
 
   // Estados para filtros
+  const [filteredRequests, setFilteredRequests] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
 
@@ -147,11 +94,39 @@ export default function ProductPurchaseSystem() {
     notes: "",
   });
 
-  // Cargar datos iniciales y aplicar filtros
+  // Cargar datos iniciales
   useEffect(() => {
-    setFilteredRequests(purchaseRequests);
-    setFilteredProducts(purchasedProducts);
+    loadInitialData();
   }, []);
+
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+
+      // Cargar todos los datos en paralelo
+      const [clientsData, requestsData, productsData, statsData] =
+        await Promise.all([
+          fetchClients(),
+          fetchProductRequests(),
+          fetchPurchasedProducts(),
+          getProductPurchaseStats(),
+        ]);
+
+      setClients(clientsData);
+      setPurchaseRequests(requestsData);
+      setPurchasedProducts(productsData);
+      setStats(statsData);
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudieron cargar los datos",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Aplicar filtros
   useEffect(() => {
@@ -168,24 +143,11 @@ export default function ProductPurchaseSystem() {
     setFilteredRequests(filtered);
   }, [purchaseRequests, statusFilter, urgencyFilter]);
 
+  useEffect(() => {
+    setFilteredProducts(purchasedProducts);
+  }, [purchasedProducts]);
+
   // Funciones de utilidad
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
-
   const getStatusBadge = (status) => {
     const statusConfig = {
       pending: {
@@ -213,10 +175,15 @@ export default function ProductPurchaseSystem() {
         className:
           "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800",
       },
+      active: {
+        label: "🔄 Activo",
+        className:
+          "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800",
+      },
       completed: {
         label: "🎉 Completado",
         className:
-          "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800",
+          "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800",
       },
     };
 
@@ -257,139 +224,218 @@ export default function ProductPurchaseSystem() {
     const totalAmount = price + interest;
     const monthlyPayment = totalAmount / months;
 
-    return {
-      totalAmount,
-      interest,
-      monthlyPayment,
-    };
+    return { totalAmount, interest, monthlyPayment };
   };
 
   // Handlers para acciones
-  const handleCreateRequest = () => {
+  const handleCreateRequest = async () => {
     if (
       !newRequest.clientId ||
       !newRequest.productName ||
       !newRequest.requestedPrice
     ) {
-      alert("Completa todos los campos obligatorios");
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Completa todos los campos obligatorios",
+      });
       return;
     }
 
-    const newReq = {
-      id: Date.now(),
-      client_id: parseInt(newRequest.clientId),
-      clients: {
-        name:
-          clients.find((c) => c.id === parseInt(newRequest.clientId))?.name ||
-          "",
-      },
-      product_name: newRequest.productName,
-      product_url: newRequest.productUrl,
-      estimated_price: parseFloat(
-        newRequest.estimatedPrice || newRequest.requestedPrice
-      ),
-      requested_price: parseFloat(newRequest.requestedPrice),
-      store: newRequest.store,
-      reason: newRequest.reason,
-      request_date: new Date().toISOString().split("T")[0],
-      status: "pending",
-      months: newRequest.months,
-      interest_rate: newRequest.interestRate,
-      urgency: newRequest.urgency,
-      client_credit_score: newRequest.clientCredit,
-      internal_notes: newRequest.notes,
-    };
+    setIsSubmitting(true);
 
-    setPurchaseRequests([newReq, ...purchaseRequests]);
+    try {
+      const requestData = {
+        clientId: newRequest.clientId,
+        productName: newRequest.productName,
+        productUrl: newRequest.productUrl,
+        estimatedPrice: newRequest.estimatedPrice,
+        requestedPrice: newRequest.requestedPrice,
+        store: newRequest.store,
+        reason: newRequest.reason,
+        months: newRequest.months,
+        interestRate: newRequest.interestRate,
+        urgency: newRequest.urgency,
+        clientCredit: newRequest.clientCredit,
+        notes: newRequest.notes,
+      };
 
-    // Reset form
-    setNewRequest({
-      clientId: "",
-      productName: "",
-      productUrl: "",
-      estimatedPrice: "",
-      requestedPrice: "",
-      store: "",
-      reason: "",
-      months: 12,
-      interestRate: 30,
-      urgency: "medium",
-      clientCredit: "good",
-      notes: "",
-    });
+      await createProductRequest(requestData);
 
-    setActiveTab("requests");
-    alert("Solicitud creada correctamente");
+      // Recargar datos
+      const [requestsData, statsData] = await Promise.all([
+        fetchProductRequests(),
+        getProductPurchaseStats(),
+      ]);
+
+      setPurchaseRequests(requestsData);
+      setStats(statsData);
+
+      // Reset form
+      setNewRequest({
+        clientId: "",
+        productName: "",
+        productUrl: "",
+        estimatedPrice: "",
+        requestedPrice: "",
+        store: "",
+        reason: "",
+        months: 12,
+        interestRate: 30,
+        urgency: "medium",
+        clientCredit: "good",
+        notes: "",
+      });
+
+      setActiveTab("requests");
+      toast({
+        title: "Solicitud creada",
+        description: "La solicitud se ha creado correctamente",
+      });
+    } catch (error) {
+      console.error("Error creating request:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "No se pudo crear la solicitud",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const approveRequest = (requestId) => {
-    setPurchaseRequests((prev) =>
-      prev.map((req) =>
-        req.id === requestId ? { ...req, status: "approved" } : req
-      )
-    );
-    alert("Solicitud aprobada");
+  const approveRequest = async (requestId) => {
+    try {
+      await updateRequestStatus(requestId, "approved");
+
+      // Recargar datos
+      const [requestsData, statsData] = await Promise.all([
+        fetchProductRequests(),
+        getProductPurchaseStats(),
+      ]);
+
+      setPurchaseRequests(requestsData);
+      setStats(statsData);
+
+      toast({
+        title: "Solicitud aprobada",
+        description: "La solicitud ha sido aprobada correctamente",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "No se pudo aprobar la solicitud",
+      });
+    }
   };
 
-  const rejectRequest = (requestId) => {
-    setPurchaseRequests((prev) =>
-      prev.map((req) =>
-        req.id === requestId ? { ...req, status: "rejected" } : req
-      )
-    );
-    alert("Solicitud rechazada");
+  const rejectRequest = async (requestId) => {
+    try {
+      await updateRequestStatus(requestId, "rejected");
+
+      // Recargar datos
+      const [requestsData, statsData] = await Promise.all([
+        fetchProductRequests(),
+        getProductPurchaseStats(),
+      ]);
+
+      setPurchaseRequests(requestsData);
+      setStats(statsData);
+
+      toast({
+        title: "Solicitud rechazada",
+        description: "La solicitud ha sido rechazada",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "No se pudo rechazar la solicitud",
+      });
+    }
   };
 
-  const markAsPurchased = (requestId) => {
-    const request = purchaseRequests.find((r) => r.id === requestId);
-    if (!request) return;
+  const markAsPurchased = async (requestId) => {
+    const actualPrice = prompt("¿Cuál fue el precio real de compra?");
+    if (!actualPrice || isNaN(actualPrice)) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Debes ingresar un precio válido",
+      });
+      return;
+    }
 
-    // Actualizar solicitud
-    setPurchaseRequests((prev) =>
-      prev.map((req) =>
-        req.id === requestId ? { ...req, status: "purchased" } : req
-      )
-    );
+    try {
+      await createPurchasedProduct({
+        requestId,
+        actualPrice: parseFloat(actualPrice),
+        purchaseDate: new Date().toISOString().split("T")[0],
+      });
 
-    // Crear producto comprado
-    const loanDetails = calculateLoanDetails(
-      request.requested_price,
-      request.months,
-      request.interest_rate
-    );
-    const newProduct = {
-      id: Date.now(),
-      client_id: request.client_id,
-      clients: request.clients,
-      product_name: request.product_name,
-      actual_purchase_price: request.requested_price * 0.95, // 5% menos como ejemplo
-      agreed_client_price: request.requested_price,
-      direct_profit: request.requested_price * 0.05,
-      purchase_date: new Date().toISOString().split("T")[0],
-      status: "purchased",
-      months: request.months,
-      interest_rate: request.interest_rate,
-      monthly_payment: loanDetails.monthlyPayment,
-      total_amount: loanDetails.totalAmount,
-      paid_installments: 0,
-      total_installments: request.months,
-      next_payment_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0],
-      total_paid: 0,
-      store: request.store,
-    };
+      // Recargar datos
+      const [requestsData, productsData, statsData] = await Promise.all([
+        fetchProductRequests(),
+        fetchPurchasedProducts(),
+        getProductPurchaseStats(),
+      ]);
 
-    setPurchasedProducts([newProduct, ...purchasedProducts]);
-    setActiveTab("purchased");
-    alert("Producto marcado como comprado");
+      setPurchaseRequests(requestsData);
+      setPurchasedProducts(productsData);
+      setStats(statsData);
+
+      setActiveTab("purchased");
+      toast({
+        title: "Producto comprado",
+        description:
+          "El producto ha sido marcado como comprado y se crearon las cuotas automáticamente",
+      });
+    } catch (error) {
+      console.error("Error marking as purchased:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "No se pudo marcar como comprado",
+      });
+    }
+  };
+
+  const handleDeleteRequest = async (requestId) => {
+    if (!confirm("¿Estás seguro de que quieres eliminar esta solicitud?")) {
+      return;
+    }
+
+    try {
+      await deleteProductRequest(requestId);
+
+      // Recargar datos
+      const [requestsData, statsData] = await Promise.all([
+        fetchProductRequests(),
+        getProductPurchaseStats(),
+      ]);
+
+      setPurchaseRequests(requestsData);
+      setStats(statsData);
+
+      toast({
+        title: "Solicitud eliminada",
+        description: "La solicitud ha sido eliminada correctamente",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "No se pudo eliminar la solicitud",
+      });
+    }
   };
 
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin mx-auto text-blue-500" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">
             Cargando sistema de productos...
           </p>
@@ -481,10 +527,9 @@ export default function ProductPurchaseSystem() {
           className="flex items-center gap-2"
         >
           📝 Solicitudes de Compra
-          {purchaseRequests.filter((r) => r.status === "pending").length >
-            0 && (
+          {stats.pendingRequests > 0 && (
             <Badge variant="secondary" className="ml-1">
-              {purchaseRequests.filter((r) => r.status === "pending").length}
+              {stats.pendingRequests}
             </Badge>
           )}
         </Button>
@@ -494,9 +539,9 @@ export default function ProductPurchaseSystem() {
           className="flex items-center gap-2"
         >
           📦 Productos Comprados
-          {purchasedProducts.length > 0 && (
+          {stats.activeProducts > 0 && (
             <Badge variant="secondary" className="ml-1">
-              {purchasedProducts.length}
+              {stats.activeProducts}
             </Badge>
           )}
         </Button>
@@ -654,7 +699,7 @@ export default function ProductPurchaseSystem() {
                           🏪 Tienda:
                         </span>
                         <span className="font-medium text-gray-900 dark:text-gray-100">
-                          {request.store}
+                          {request.store || "No especificada"}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
@@ -743,10 +788,10 @@ export default function ProductPurchaseSystem() {
 
                       <Button
                         variant="outline"
-                        className="border-gray-300 dark:border-gray-700"
+                        className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        onClick={() => handleDeleteRequest(request.id)}
                       >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver Detalles
+                        🗑️ Eliminar
                       </Button>
                     </div>
                   </CardContent>
@@ -778,13 +823,6 @@ export default function ProductPurchaseSystem() {
           ) : (
             filteredProducts.map((product) => {
               const clientData = product.clients || {};
-              const progressPercentage =
-                product.total_installments > 0
-                  ? Math.round(
-                      (product.paid_installments / product.total_installments) *
-                        100
-                    )
-                  : 0;
 
               return (
                 <Card
@@ -806,11 +844,13 @@ export default function ProductPurchaseSystem() {
                             <Package className="h-4 w-4 mr-1" />
                             Comprado: {formatDate(product.purchase_date)}
                           </span>
-                          <span className="flex items-center">
-                            <Calendar className="h-4 w-4 mr-1" />
-                            Próximo pago:{" "}
-                            {formatDate(product.next_payment_date)}
-                          </span>
+                          {product.next_payment_date && (
+                            <span className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-1" />
+                              Próximo pago:{" "}
+                              {formatDate(product.next_payment_date)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       {getStatusBadge(product.status)}
@@ -838,7 +878,7 @@ export default function ProductPurchaseSystem() {
                           Ganancia Directa
                         </p>
                         <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                          {formatCurrency(product.direct_profit)}
+                          {formatCurrency(product.direct_profit || 0)}
                         </p>
                       </div>
                       <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
@@ -862,28 +902,39 @@ export default function ProductPurchaseSystem() {
                     <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-gray-900 dark:text-gray-100">
-                          Progreso de Pago
+                          Estado de Pagos
                         </span>
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {product.paid_installments}/
-                          {product.total_installments} cuotas
+                          Pagado: {formatCurrency(product.total_paid || 0)} de{" "}
+                          {formatCurrency(product.total_amount)}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                         <div
                           className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${progressPercentage}%` }}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              ((product.total_paid || 0) /
+                                product.total_amount) *
+                                100
+                            )}%`,
+                          }}
                         ></div>
                       </div>
                       <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mt-1">
                         <span>
-                          Pagado: {formatCurrency(product.total_paid || 0)}
+                          Progreso:{" "}
+                          {Math.round(
+                            ((product.total_paid || 0) / product.total_amount) *
+                              100
+                          )}
+                          %
                         </span>
                         <span>
                           Pendiente:{" "}
                           {formatCurrency(
-                            (product.total_amount || 0) -
-                              (product.total_paid || 0)
+                            product.total_amount - (product.total_paid || 0)
                           )}
                         </span>
                       </div>
@@ -893,6 +944,14 @@ export default function ProductPurchaseSystem() {
                       <Button
                         variant="outline"
                         className="border-gray-300 dark:border-gray-700"
+                        onClick={() => {
+                          // Aquí podrías abrir un modal para registrar pagos
+                          toast({
+                            title: "Próximamente",
+                            description:
+                              "Funcionalidad de registro de pagos en desarrollo",
+                          });
+                        }}
                       >
                         <Banknote className="h-4 w-4 mr-1" />
                         Registrar Pago
@@ -901,13 +960,7 @@ export default function ProductPurchaseSystem() {
                         variant="outline"
                         className="border-gray-300 dark:border-gray-700"
                       >
-                        📄 Ver Recibo de Compra
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-gray-300 dark:border-gray-700"
-                      >
-                        📊 Historial de Pagos
+                        📄 Ver Historial
                       </Button>
                       <Button
                         variant="outline"
@@ -954,7 +1007,7 @@ export default function ProductPurchaseSystem() {
                   </SelectTrigger>
                   <SelectContent>
                     {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id.toString()}>
+                      <SelectItem key={client.id} value={client.id}>
                         {client.name}
                       </SelectItem>
                     ))}
@@ -1101,7 +1154,7 @@ export default function ProductPurchaseSystem() {
                   onChange={(e) =>
                     setNewRequest({
                       ...newRequest,
-                      interestRate: parseInt(e.target.value),
+                      interestRate: parseInt(e.target.value) || 30,
                     })
                   }
                 />
@@ -1214,9 +1267,16 @@ export default function ProductPurchaseSystem() {
             <Button
               onClick={handleCreateRequest}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={isLoading}
+              disabled={isSubmitting}
             >
-              {isLoading ? "Creando..." : "📝 Crear Solicitud"}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                "📝 Crear Solicitud"
+              )}
             </Button>
           </CardFooter>
         </Card>

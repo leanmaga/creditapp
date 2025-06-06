@@ -617,11 +617,12 @@ export async function fetchStatsData() {
     };
   }
 }
-
 export async function createProductRequest(requestData) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
 
   // Calcular detalles del préstamo
   const interestAmount =
@@ -632,26 +633,32 @@ export async function createProductRequest(requestData) {
   const { data, error } = await supabase
     .from("product_purchase_requests")
     .insert({
+      user_id: user.id,
       client_id: requestData.clientId,
       product_name: requestData.productName,
-      product_url: requestData.productUrl,
-      estimated_price: requestData.estimatedPrice,
-      requested_price: requestData.requestedPrice,
-      store: requestData.store,
-      reason: requestData.reason,
+      product_url: requestData.productUrl || null,
+      estimated_price: requestData.estimatedPrice
+        ? parseFloat(requestData.estimatedPrice)
+        : null,
+      requested_price: parseFloat(requestData.requestedPrice),
+      store: requestData.store || null,
+      reason: requestData.reason || null,
       urgency: requestData.urgency || "medium",
       months: requestData.months,
       interest_rate: requestData.interestRate,
       monthly_payment: monthlyPayment,
       total_amount: totalAmount,
-      client_credit_score: requestData.clientCredit,
-      internal_notes: requestData.notes,
-      user_id: user.id,
+      client_credit_score: requestData.clientCredit || "good",
+      internal_notes: requestData.notes || null,
     })
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("Error creating product request:", error);
+    throw new Error(error.message);
+  }
+
   return data;
 }
 
@@ -659,6 +666,8 @@ export async function fetchProductRequests(status = null) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) return [];
 
   let query = supabase
     .from("product_purchase_requests")
@@ -676,18 +685,29 @@ export async function fetchProductRequests(status = null) {
   }
 
   const { data, error } = await query;
-  if (error) throw error;
-  return data;
+
+  if (error) {
+    console.error("Error fetching product requests:", error);
+    return [];
+  }
+
+  return data || [];
 }
 
 export async function updateRequestStatus(requestId, status, notes = null) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
   const updateData = {
     status,
     updated_at: new Date().toISOString(),
   };
 
   if (status === "approved") {
-    updateData.approved_date = new Date().toISOString();
+    updateData.approved_date = new Date().toISOString().split("T")[0];
   }
 
   if (notes) {
@@ -698,24 +718,61 @@ export async function updateRequestStatus(requestId, status, notes = null) {
     .from("product_purchase_requests")
     .update(updateData)
     .eq("id", requestId)
+    .eq("user_id", user.id)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("Error updating request status:", error);
+    throw new Error(error.message);
+  }
+
   return data;
+}
+
+export async function deleteProductRequest(requestId) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
+  const { error } = await supabase
+    .from("product_purchase_requests")
+    .delete()
+    .eq("id", requestId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.error("Error deleting product request:", error);
+    throw new Error(error.message);
+  }
+
+  return true;
 }
 
 // 2. PRODUCTOS COMPRADOS
 
 export async function createPurchasedProduct(purchaseData) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
+  // Usar la función RPC para aprobar solicitud y crear producto
   const { data, error } = await supabase.rpc("approve_product_request", {
     p_request_id: purchaseData.requestId,
-    p_actual_price: purchaseData.actualPrice,
+    p_actual_price: parseFloat(purchaseData.actualPrice),
     p_purchase_date:
       purchaseData.purchaseDate || new Date().toISOString().split("T")[0],
   });
 
-  if (error) throw error;
+  if (error) {
+    console.error("Error creating purchased product:", error);
+    throw new Error(error.message);
+  }
+
   return data;
 }
 
@@ -723,6 +780,8 @@ export async function fetchPurchasedProducts(clientId = null) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) return [];
 
   let query = supabase
     .from("purchased_products")
@@ -741,8 +800,13 @@ export async function fetchPurchasedProducts(clientId = null) {
   }
 
   const { data, error } = await query;
-  if (error) throw error;
-  return data;
+
+  if (error) {
+    console.error("Error fetching purchased products:", error);
+    return [];
+  }
+
+  return data || [];
 }
 
 export async function updateProductStatus(
@@ -750,6 +814,12 @@ export async function updateProductStatus(
   status,
   deliveryDate = null
 ) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
   const updateData = {
     status,
     updated_at: new Date().toISOString(),
@@ -763,27 +833,49 @@ export async function updateProductStatus(
     .from("purchased_products")
     .update(updateData)
     .eq("id", productId)
+    .eq("user_id", user.id)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("Error updating product status:", error);
+    throw new Error(error.message);
+  }
+
   return data;
 }
 
 // 3. PAGOS DE PRODUCTOS
 
 export async function fetchProductPayments(productId) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from("product_payments")
     .select("*")
     .eq("purchased_product_id", productId)
+    .eq("user_id", user.id)
     .order("installment_number");
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    console.error("Error fetching product payments:", error);
+    return [];
+  }
+
+  return data || [];
 }
 
 export async function payProductInstallment(paymentId, paymentData) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
   const { data, error } = await supabase
     .from("product_payments")
     .update({
@@ -791,14 +883,19 @@ export async function payProductInstallment(paymentId, paymentData) {
       payment_date:
         paymentData.paymentDate || new Date().toISOString().split("T")[0],
       payment_method: paymentData.paymentMethod || "transferencia",
-      notes: paymentData.notes,
+      notes: paymentData.notes || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", paymentId)
+    .eq("user_id", user.id)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("Error paying product installment:", error);
+    throw new Error(error.message);
+  }
+
   return data;
 }
 
@@ -806,6 +903,10 @@ export async function getOverdueProductPayments() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const today = new Date().toISOString().split("T")[0];
 
   const { data, error } = await supabase
     .from("product_payments")
@@ -817,12 +918,16 @@ export async function getOverdueProductPayments() {
     `
     )
     .eq("paid", false)
-    .lt("due_date", new Date().toISOString().split("T")[0])
+    .lt("due_date", today)
     .eq("user_id", user.id)
     .order("due_date");
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    console.error("Error fetching overdue product payments:", error);
+    return [];
+  }
+
+  return data || [];
 }
 
 // 4. ESTADÍSTICAS Y REPORTES
@@ -831,6 +936,20 @@ export async function getProductPurchaseStats() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      pendingRequests: 0,
+      approvedRequests: 0,
+      activeProducts: 0,
+      totalProfits: 0,
+      directProfits: 0,
+      interestProfits: 0,
+      capitalInvested: 0,
+      capitalRecovered: 0,
+      pendingCapital: 0,
+    };
+  }
 
   try {
     // Solicitudes pendientes
@@ -866,6 +985,7 @@ export async function getProductPurchaseStats() {
         (sum, p) => sum + parseFloat(p.direct_profit || 0),
         0
       ) || 0;
+
     const interestProfits =
       completedProducts?.reduce(
         (sum, p) =>
@@ -874,6 +994,7 @@ export async function getProductPurchaseStats() {
             parseFloat(p.agreed_client_price || 0)),
         0
       ) || 0;
+
     const totalProfits = directProfits + interestProfits;
 
     // Capital invertido actualmente
@@ -888,6 +1009,7 @@ export async function getProductPurchaseStats() {
         (sum, p) => sum + parseFloat(p.actual_purchase_price || 0),
         0
       ) || 0;
+
     const capitalRecovered =
       activeProductsData?.reduce(
         (sum, p) => sum + parseFloat(p.total_paid || 0),
@@ -921,35 +1043,66 @@ export async function getProductPurchaseStats() {
   }
 }
 
-export async function getProductPurchaseReport(startDate, endDate) {
+export async function getProductPaymentAlerts() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data, error } = await supabase
-    .from("purchased_products")
-    .select(
-      `
-      *,
-      clients(name),
-      product_payments(amount, paid, payment_date)
-    `
-    )
-    .gte("purchase_date", startDate)
-    .lte("purchase_date", endDate)
-    .eq("user_id", user.id)
-    .order("purchase_date", { ascending: false });
+  if (!user) return { overdue: [], upcoming: [] };
 
-  if (error) throw error;
-  return data;
+  const today = new Date().toISOString().split("T")[0];
+  const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
+
+  try {
+    // Pagos vencidos
+    const { data: overdue } = await supabase
+      .from("product_payments")
+      .select(
+        `
+        *,
+        purchased_products(product_name),
+        clients(name, phone)
+      `
+      )
+      .eq("paid", false)
+      .lt("due_date", today)
+      .eq("user_id", user.id);
+
+    // Pagos próximos (próxima semana)
+    const { data: upcoming } = await supabase
+      .from("product_payments")
+      .select(
+        `
+        *,
+        purchased_products(product_name),
+        clients(name, phone)
+      `
+      )
+      .eq("paid", false)
+      .gte("due_date", today)
+      .lte("due_date", nextWeek)
+      .eq("user_id", user.id);
+
+    return {
+      overdue: overdue || [],
+      upcoming: upcoming || [],
+    };
+  } catch (error) {
+    console.error("Error fetching product payment alerts:", error);
+    return { overdue: [], upcoming: [] };
+  }
 }
 
-// 5. UTILIDADES
+// 5. FUNCIONES DE BÚSQUEDA Y UTILIDADES
 
 export async function searchProducts(searchTerm) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) return [];
 
   const { data, error } = await supabase
     .from("purchased_products")
@@ -965,11 +1118,21 @@ export async function searchProducts(searchTerm) {
     .eq("user_id", user.id)
     .order("purchase_date", { ascending: false });
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    console.error("Error searching products:", error);
+    return [];
+  }
+
+  return data || [];
 }
 
 export async function getClientProductHistory(clientId) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from("purchased_products")
     .select(
@@ -979,15 +1142,19 @@ export async function getClientProductHistory(clientId) {
     `
     )
     .eq("client_id", clientId)
+    .eq("user_id", user.id)
     .order("purchase_date", { ascending: false });
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    console.error("Error fetching client product history:", error);
+    return [];
+  }
+
+  return data || [];
 }
 
 // 6. INTEGRACIÓN CON SISTEMA EXISTENTE
 
-// Agregar esta función a tus funciones existentes de cliente
 export async function fetchClientWithProducts(clientId) {
   try {
     const clientData = await fetchClientById(clientId);
@@ -1003,58 +1170,11 @@ export async function fetchClientWithProducts(clientId) {
   }
 }
 
-// 7. NOTIFICACIONES Y ALERTAS
-
-export async function getProductPaymentAlerts() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const today = new Date().toISOString().split("T")[0];
-  const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split("T")[0];
-
-  // Pagos vencidos
-  const { data: overdue } = await supabase
-    .from("product_payments")
-    .select(
-      `
-      *,
-      purchased_products(product_name),
-      clients(name, phone)
-    `
-    )
-    .eq("paid", false)
-    .lt("due_date", today)
-    .eq("user_id", user.id);
-
-  // Pagos próximos (próxima semana)
-  const { data: upcoming } = await supabase
-    .from("product_payments")
-    .select(
-      `
-      *,
-      purchased_products(product_name),
-      clients(name, phone)
-    `
-    )
-    .eq("paid", false)
-    .gte("due_date", today)
-    .lte("due_date", nextWeek)
-    .eq("user_id", user.id);
-
-  return {
-    overdue: overdue || [],
-    upcoming: upcoming || [],
-  };
-}
-
-// 8. FUNCIONES DE CONFIGURACIÓN
+// 7. FUNCIONES DE CONFIGURACIÓN
 
 export async function getProductPurchaseSettings() {
   // Esta función puede expandirse para manejar configuraciones
-  // como tasas de interés por defecto, plazos preferidos, etc.
+  // guardadas en Supabase en el futuro
   return {
     defaultInterestRates: {
       6: 25,
@@ -1071,6 +1191,18 @@ export async function getProductPurchaseSettings() {
       "Compumundo",
       "Garbarino",
       "Frávega",
+      "Otro",
+    ],
+    urgencyLevels: [
+      { value: "low", label: "🟢 Baja", color: "text-green-600" },
+      { value: "medium", label: "🟡 Media", color: "text-yellow-600" },
+      { value: "high", label: "🔴 Alta", color: "text-red-600" },
+    ],
+    creditScores: [
+      { value: "poor", label: "Malo", color: "text-red-600" },
+      { value: "fair", label: "Regular", color: "text-yellow-600" },
+      { value: "good", label: "Bueno", color: "text-blue-600" },
+      { value: "excellent", label: "Excelente", color: "text-green-600" },
     ],
   };
 }
