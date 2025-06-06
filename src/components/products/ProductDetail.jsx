@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Receipt,
   CreditCard,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -32,6 +33,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   fetchPurchasedProducts,
@@ -47,6 +59,7 @@ export function ProductDetail({ productId, clientId }) {
   const [product, setProduct] = useState(null);
   const [payments, setPayments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPayment, setSelectedPayment] = useState(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -188,6 +201,11 @@ export function ProductDetail({ productId, clientId }) {
     }
   };
 
+  const openPaymentDialog = (payment = null) => {
+    setSelectedPayment(payment);
+    setIsPaymentDialogOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -265,7 +283,7 @@ export function ProductDetail({ productId, clientId }) {
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={() => setIsPaymentDialogOpen(true)}
+            onClick={() => openPaymentDialog()}
             className="bg-green-600 hover:bg-green-700 text-white"
           >
             <Banknote className="h-4 w-4 mr-2" />
@@ -442,6 +460,16 @@ export function ProductDetail({ productId, clientId }) {
                   🔄 Marcar como Activo
                 </Button>
               )}
+              {(product.status === "active" ||
+                product.status === "delivered") && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handleUpdateStatus("completed")}
+                >
+                  🎉 Marcar como Completado
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -513,7 +541,7 @@ export function ProductDetail({ productId, clientId }) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setIsPaymentDialogOpen(true)}
+                            onClick={() => openPaymentDialog(payment)}
                             className="border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
                           >
                             <Receipt className="h-3.5 w-3.5 mr-1" />
@@ -541,6 +569,7 @@ export function ProductDetail({ productId, clientId }) {
         productId={productId}
         productName={product.product_name}
         clientName={clientData.name}
+        selectedPayment={selectedPayment}
         onSuccess={refreshProductData}
       />
     </div>

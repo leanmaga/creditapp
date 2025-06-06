@@ -37,13 +37,14 @@ export function ProductPaymentDialog({
   productId,
   productName,
   clientName,
+  selectedPayment,
   onSuccess,
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [payments, setPayments] = useState([]);
-  const [selectedPayment, setSelectedPayment] = useState("");
+  const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [paymentData, setPaymentData] = useState({
     paymentDate: new Date().toISOString().substring(0, 10),
     paymentMethod: "transferencia",
@@ -56,15 +57,24 @@ export function ProductPaymentDialog({
     }
   }, [open, productId]);
 
+  // Efecto para preseleccionar el pago si viene selectedPayment
+  useEffect(() => {
+    if (selectedPayment && selectedPayment.id) {
+      setSelectedPaymentId(selectedPayment.id);
+    }
+  }, [selectedPayment]);
+
   const loadPayments = async () => {
     try {
       const paymentsData = await fetchProductPayments(productId);
       setPayments(paymentsData);
 
-      // Seleccionar automáticamente el próximo pago pendiente
-      const nextPendingPayment = paymentsData.find((p) => !p.paid);
-      if (nextPendingPayment) {
-        setSelectedPayment(nextPendingPayment.id);
+      // Si no hay selectedPayment, seleccionar automáticamente el próximo pago pendiente
+      if (!selectedPayment) {
+        const nextPendingPayment = paymentsData.find((p) => !p.paid);
+        if (nextPendingPayment) {
+          setSelectedPaymentId(nextPendingPayment.id);
+        }
       }
     } catch (error) {
       console.error("Error loading payments:", error);
@@ -79,7 +89,7 @@ export function ProductPaymentDialog({
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!selectedPayment) {
+    if (!selectedPaymentId) {
       toast({
         variant: "destructive",
         title: "Error",
@@ -91,7 +101,7 @@ export function ProductPaymentDialog({
     setIsSubmitting(true);
 
     try {
-      await payProductInstallment(selectedPayment, paymentData);
+      await payProductInstallment(selectedPaymentId, paymentData);
 
       toast({
         title: "Pago registrado",
@@ -102,7 +112,7 @@ export function ProductPaymentDialog({
       if (onSuccess) onSuccess();
 
       // Reset form
-      setSelectedPayment("");
+      setSelectedPaymentId("");
       setPaymentData({
         paymentDate: new Date().toISOString().substring(0, 10),
         paymentMethod: "transferencia",
@@ -121,7 +131,7 @@ export function ProductPaymentDialog({
     }
   };
 
-  const selectedPaymentData = payments.find((p) => p.id === selectedPayment);
+  const selectedPaymentData = payments.find((p) => p.id === selectedPaymentId);
 
   const getPaymentStatusBadge = (payment) => {
     if (payment.paid) {
@@ -145,6 +155,18 @@ export function ProductPaymentDialog({
     }
   };
 
+  // Reset form cuando se cierra el dialog
+  useEffect(() => {
+    if (!open) {
+      setSelectedPaymentId("");
+      setPaymentData({
+        paymentDate: new Date().toISOString().substring(0, 10),
+        paymentMethod: "transferencia",
+        notes: "",
+      });
+    }
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 shadow-xl">
@@ -163,41 +185,44 @@ export function ProductPaymentDialog({
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             {/* Selector de cuota */}
-            <div className="space-y-2">
-              <Label
-                htmlFor="paymentSelect"
-                className="text-gray-700 dark:text-gray-300"
-              >
-                Seleccionar Cuota
-              </Label>
-              <Select
-                value={selectedPayment}
-                onValueChange={setSelectedPayment}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una cuota para pagar" />
-                </SelectTrigger>
-                <SelectContent>
-                  {payments.map((payment) => (
-                    <SelectItem
-                      key={payment.id}
-                      value={payment.id}
-                      disabled={payment.paid}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span>
-                          Cuota #{payment.installment_number} -{" "}
-                          {formatCurrency(payment.amount)}
-                        </span>
-                        <span className="ml-2">
-                          {getPaymentStatusBadge(payment)}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {!selectedPayment && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="paymentSelect"
+                  className="text-gray-700 dark:text-gray-300"
+                >
+                  Seleccionar Cuota
+                </Label>
+                <Select
+                  value={selectedPaymentId}
+                  onValueChange={setSelectedPaymentId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una cuota para pagar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {payments.map((payment) => (
+                      <SelectItem
+                        key={payment.id}
+                        value={payment.id}
+                        disabled={payment.paid}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span>
+                            Cuota #{payment.installment_number} -{" "}
+                            {formatCurrency(payment.amount)} -{" "}
+                            {formatDate(payment.due_date)}
+                          </span>
+                          <span className="ml-2">
+                            {getPaymentStatusBadge(payment)}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Vista previa de la cuota seleccionada */}
             {selectedPaymentData && (
@@ -376,7 +401,7 @@ export function ProductPaymentDialog({
             <Button
               type="submit"
               disabled={
-                isSubmitting || !selectedPayment || selectedPaymentData?.paid
+                isSubmitting || !selectedPaymentId || selectedPaymentData?.paid
               }
               className="bg-green-600 text-white hover:bg-green-700 disabled:bg-green-600/70 dark:bg-green-600 dark:hover:bg-green-700 transition-colors"
             >

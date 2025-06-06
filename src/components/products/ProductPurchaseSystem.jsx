@@ -41,6 +41,7 @@ import {
   Plus,
   Filter,
   Loader2,
+  Percent,
 } from "lucide-react";
 import {
   createProductRequest,
@@ -53,6 +54,7 @@ import {
   deleteProductRequest,
 } from "@/lib/api-client";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import Link from "next/link";
 
 export default function ProductPurchaseSystem() {
   const { toast } = useToast();
@@ -78,21 +80,89 @@ export default function ProductPurchaseSystem() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
 
-  // Estado para nueva solicitud
+  // Estado para nueva solicitud - CAMPOS ACTUALIZADOS
   const [newRequest, setNewRequest] = useState({
     clientId: "",
     productName: "",
     productUrl: "",
-    estimatedPrice: "",
-    requestedPrice: "",
+    purchasePrice: "", // Precio de compra (lo que yo pago)
+    interestAmount: "", // Valor de los intereses
     store: "",
     reason: "",
     months: 12,
-    interestRate: 30,
+    interestRate: 30, // Tasa de interés en porcentaje
     urgency: "medium",
     clientCredit: "good",
     notes: "",
   });
+
+  // Función para sincronizar intereses
+  const syncInterests = (
+    purchasePrice,
+    interestRate,
+    interestAmount,
+    changedField
+  ) => {
+    const price = parseFloat(purchasePrice) || 0;
+
+    if (changedField === "rate" && price > 0) {
+      // Si cambió la tasa, calcular el monto
+      const newAmount = (price * interestRate) / 100;
+      return { rate: interestRate, amount: newAmount.toString() };
+    } else if (changedField === "amount" && price > 0) {
+      // Si cambió el monto, calcular la tasa
+      const newRate = ((parseFloat(interestAmount) || 0) / price) * 100;
+      return { rate: Math.round(newRate * 100) / 100, amount: interestAmount };
+    }
+
+    return { rate: interestRate, amount: interestAmount };
+  };
+
+  // Handler para cambios en precio de compra
+  const handlePurchasePriceChange = (value) => {
+    const synced = syncInterests(
+      value,
+      newRequest.interestRate,
+      newRequest.interestAmount,
+      "rate"
+    );
+    setNewRequest({
+      ...newRequest,
+      purchasePrice: value,
+      interestAmount: synced.amount,
+    });
+  };
+
+  // Handler para cambios en tasa de interés
+  const handleInterestRateChange = (value) => {
+    const rate = Math.max(0, Math.min(200, parseFloat(value) || 0));
+    const synced = syncInterests(
+      newRequest.purchasePrice,
+      rate,
+      newRequest.interestAmount,
+      "rate"
+    );
+    setNewRequest({
+      ...newRequest,
+      interestRate: rate,
+      interestAmount: synced.amount,
+    });
+  };
+
+  // Handler para cambios en monto de interés
+  const handleInterestAmountChange = (value) => {
+    const synced = syncInterests(
+      newRequest.purchasePrice,
+      newRequest.interestRate,
+      value,
+      "amount"
+    );
+    setNewRequest({
+      ...newRequest,
+      interestAmount: value,
+      interestRate: synced.rate,
+    });
+  };
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -219,12 +289,19 @@ export default function ProductPurchaseSystem() {
     }
   };
 
-  const calculateLoanDetails = (price, months, interestRate) => {
-    const interest = (price * interestRate) / 100;
+  // NUEVA función de cálculo con los campos actualizados
+  const calculateLoanDetails = (purchasePrice, interestAmount, months) => {
+    const price = parseFloat(purchasePrice) || 0;
+    const interest = parseFloat(interestAmount) || 0;
     const totalAmount = price + interest;
     const monthlyPayment = totalAmount / months;
 
-    return { totalAmount, interest, monthlyPayment };
+    return {
+      totalAmount,
+      interest,
+      monthlyPayment,
+      clientPrice: price + interest,
+    };
   };
 
   // Handlers para acciones
@@ -232,7 +309,7 @@ export default function ProductPurchaseSystem() {
     if (
       !newRequest.clientId ||
       !newRequest.productName ||
-      !newRequest.requestedPrice
+      !newRequest.purchasePrice
     ) {
       toast({
         variant: "destructive",
@@ -245,12 +322,17 @@ export default function ProductPurchaseSystem() {
     setIsSubmitting(true);
 
     try {
+      // Calcular el precio acordado con el cliente
+      const purchasePrice = parseFloat(newRequest.purchasePrice);
+      const interestAmount = parseFloat(newRequest.interestAmount) || 0;
+      const agreedClientPrice = purchasePrice + interestAmount;
+
       const requestData = {
         clientId: newRequest.clientId,
         productName: newRequest.productName,
         productUrl: newRequest.productUrl,
-        estimatedPrice: newRequest.estimatedPrice,
-        requestedPrice: newRequest.requestedPrice,
+        estimatedPrice: purchasePrice, // Guardamos como estimatedPrice por compatibilidad
+        requestedPrice: agreedClientPrice, // El precio total que pagará el cliente
         store: newRequest.store,
         reason: newRequest.reason,
         months: newRequest.months,
@@ -276,8 +358,8 @@ export default function ProductPurchaseSystem() {
         clientId: "",
         productName: "",
         productUrl: "",
-        estimatedPrice: "",
-        requestedPrice: "",
+        purchasePrice: "",
+        interestAmount: "",
         store: "",
         reason: "",
         months: 12,
@@ -612,10 +694,15 @@ export default function ProductPurchaseSystem() {
             </Card>
           ) : (
             filteredRequests.map((request) => {
+              // Usar los campos actuales de la DB
+              const purchasePrice = request.estimated_price || 0; // El precio de compra real
+              const clientPrice = request.requested_price || 0; // Lo que paga el cliente
+              const interestAmount = clientPrice - purchasePrice; // La ganancia
+
               const loanDetails = calculateLoanDetails(
-                request.requested_price,
-                request.months,
-                request.interest_rate
+                purchasePrice,
+                interestAmount,
+                request.months
               );
               const clientData = request.clients || {};
 
@@ -661,10 +748,10 @@ export default function ProductPurchaseSystem() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                       <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
                         <p className="text-sm text-blue-600 dark:text-blue-400">
-                          Precio Solicitado
+                          Precio de Compra
                         </p>
                         <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                          {formatCurrency(request.requested_price)}
+                          {formatCurrency(purchasePrice)}
                         </p>
                       </div>
                       <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
@@ -677,10 +764,10 @@ export default function ProductPurchaseSystem() {
                       </div>
                       <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
                         <p className="text-sm text-purple-600 dark:text-purple-400">
-                          Total a Pagar
+                          Cliente Paga
                         </p>
                         <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                          {formatCurrency(loanDetails.totalAmount)}
+                          {formatCurrency(clientPrice)}
                         </p>
                       </div>
                       <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
@@ -688,7 +775,7 @@ export default function ProductPurchaseSystem() {
                           Tu Ganancia
                         </p>
                         <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                          {formatCurrency(loanDetails.interest)}
+                          {formatCurrency(interestAmount)}
                         </p>
                       </div>
                     </div>
@@ -941,21 +1028,17 @@ export default function ProductPurchaseSystem() {
                     </div>
 
                     <div className="flex items-center space-x-2 flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        className="border-gray-300 dark:border-gray-700"
-                        onClick={() => {
-                          // Aquí podrías abrir un modal para registrar pagos
-                          toast({
-                            title: "Próximamente",
-                            description:
-                              "Funcionalidad de registro de pagos en desarrollo",
-                          });
-                        }}
+                      <Link
+                        href={`/productos/${product.id}?clientId=${product.client_id}`}
                       >
-                        <Banknote className="h-4 w-4 mr-1" />
-                        Registrar Pago
-                      </Button>
+                        <Button
+                          variant="outline"
+                          className="border-gray-300 dark:border-gray-700"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Ver Detalles
+                        </Button>
+                      </Link>
                       <Button
                         variant="outline"
                         className="border-gray-300 dark:border-gray-700"
@@ -1035,47 +1118,62 @@ export default function ProductPurchaseSystem() {
               </div>
             </div>
 
+            {/* CAMPOS NUEVOS SINCRONIZADOS */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label
-                  htmlFor="requestedPrice"
+                  htmlFor="purchasePrice"
                   className="text-gray-700 dark:text-gray-300"
                 >
-                  Precio Solicitado *
+                  Precio de Compra (lo que yo pago) *
                 </Label>
                 <Input
-                  id="requestedPrice"
+                  id="purchasePrice"
                   type="number"
-                  placeholder="450000"
-                  value={newRequest.requestedPrice}
-                  onChange={(e) =>
-                    setNewRequest({
-                      ...newRequest,
-                      requestedPrice: e.target.value,
-                    })
-                  }
+                  placeholder="100000"
+                  value={newRequest.purchasePrice}
+                  onChange={(e) => handlePurchasePriceChange(e.target.value)}
                 />
               </div>
               <div>
                 <Label
-                  htmlFor="estimatedPrice"
+                  htmlFor="interestAmount"
                   className="text-gray-700 dark:text-gray-300"
                 >
-                  Precio Estimado
+                  Valor de los Intereses (ARS)
                 </Label>
                 <Input
-                  id="estimatedPrice"
+                  id="interestAmount"
                   type="number"
-                  placeholder="450000"
-                  value={newRequest.estimatedPrice}
-                  onChange={(e) =>
-                    setNewRequest({
-                      ...newRequest,
-                      estimatedPrice: e.target.value,
-                    })
-                  }
+                  placeholder="30000"
+                  value={newRequest.interestAmount}
+                  onChange={(e) => handleInterestAmountChange(e.target.value)}
                 />
               </div>
+            </div>
+
+            {/* Mostrar tasa calculada */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Percent className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                  Tasa de Interés Calculada: {newRequest.interestRate}%
+                </span>
+              </div>
+              <Input
+                type="number"
+                min="0"
+                max="200"
+                step="0.1"
+                placeholder="30"
+                value={newRequest.interestRate}
+                onChange={(e) => handleInterestRateChange(e.target.value)}
+                className="w-24"
+              />
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                💡 Cambia cualquier campo y los otros se actualizarán
+                automáticamente
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1113,7 +1211,7 @@ export default function ProductPurchaseSystem() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label
                   htmlFor="months"
@@ -1137,27 +1235,6 @@ export default function ProductPurchaseSystem() {
                     <SelectItem value="24">24 meses</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label
-                  htmlFor="interestRate"
-                  className="text-gray-700 dark:text-gray-300"
-                >
-                  Tasa de Interés (%)
-                </Label>
-                <Input
-                  id="interestRate"
-                  type="number"
-                  min="1"
-                  max="200"
-                  value={newRequest.interestRate}
-                  onChange={(e) =>
-                    setNewRequest({
-                      ...newRequest,
-                      interestRate: parseInt(e.target.value) || 30,
-                    })
-                  }
-                />
               </div>
               <div>
                 <Label
@@ -1219,17 +1296,18 @@ export default function ProductPurchaseSystem() {
             </div>
 
             {/* Vista previa de cálculos */}
-            {newRequest.requestedPrice && (
+            {newRequest.purchasePrice && newRequest.interestAmount && (
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
                 <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">
                   Vista Previa del Préstamo
                 </h4>
                 {(() => {
-                  const price = parseFloat(newRequest.requestedPrice);
+                  const purchasePrice = parseFloat(newRequest.purchasePrice);
+                  const interestAmount = parseFloat(newRequest.interestAmount);
                   const details = calculateLoanDetails(
-                    price,
-                    newRequest.months,
-                    newRequest.interestRate
+                    purchasePrice,
+                    interestAmount,
+                    newRequest.months
                   );
                   return (
                     <div className="grid grid-cols-3 gap-4 text-sm">
@@ -1243,10 +1321,10 @@ export default function ProductPurchaseSystem() {
                       </div>
                       <div>
                         <span className="text-gray-600 dark:text-gray-400">
-                          Total a pagar:
+                          Cliente pagará:
                         </span>
                         <p className="font-medium text-gray-900 dark:text-gray-100">
-                          {formatCurrency(details.totalAmount)}
+                          {formatCurrency(details.clientPrice)}
                         </p>
                       </div>
                       <div>
@@ -1254,7 +1332,7 @@ export default function ProductPurchaseSystem() {
                           Tu ganancia:
                         </span>
                         <p className="font-medium text-green-600 dark:text-green-400">
-                          {formatCurrency(details.interest)}
+                          {formatCurrency(interestAmount)}
                         </p>
                       </div>
                     </div>
