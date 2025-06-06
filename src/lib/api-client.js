@@ -1394,13 +1394,39 @@ export async function getDocumentStats() {
     };
   }
 
-  const { data, error } = await supabase
-    .from("document_stats")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
+  try {
+    // Obtener todos los documentos del usuario
+    const { data: documents, error } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("user_id", user.id);
 
-  if (error && error.code !== "PGRST116") {
+    if (error) {
+      console.error("Error fetching documents for stats:", error);
+      throw error;
+    }
+
+    const docs = documents || [];
+    const today = new Date().toISOString().split("T")[0];
+
+    // Calcular estadísticas manualmente
+    return {
+      totalDocuments: docs.length,
+      verifiedDocuments: docs.filter(
+        (d) => d.verification_status === "verified"
+      ).length,
+      pendingDocuments: docs.filter((d) => d.verification_status === "pending")
+        .length,
+      rejectedDocuments: docs.filter(
+        (d) => d.verification_status === "rejected"
+      ).length,
+      paymentReceipts: docs.filter(
+        (d) => d.document_type === "comprobante_pago"
+      ).length,
+      todayUploads: docs.filter((d) => d.created_at?.startsWith(today)).length,
+      totalStorageUsed: docs.reduce((sum, d) => sum + (d.file_size || 0), 0),
+    };
+  } catch (error) {
     console.error("Error fetching document stats:", error);
     return {
       totalDocuments: 0,
@@ -1412,16 +1438,6 @@ export async function getDocumentStats() {
       totalStorageUsed: 0,
     };
   }
-
-  return {
-    totalDocuments: data?.total_documents || 0,
-    verifiedDocuments: data?.verified_documents || 0,
-    pendingDocuments: data?.pending_documents || 0,
-    rejectedDocuments: data?.rejected_documents || 0,
-    paymentReceipts: data?.payment_receipts || 0,
-    todayUploads: data?.today_uploads || 0,
-    totalStorageUsed: data?.total_storage_used || 0,
-  };
 }
 
 export async function searchDocuments(searchTerm) {
