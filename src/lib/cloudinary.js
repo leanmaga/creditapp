@@ -1,15 +1,7 @@
 // src/lib/cloudinary.js
-import { v2 as cloudinary } from "cloudinary";
+// Versión para cliente - Compatible con Next.js
 
-// Configuración del cliente de Cloudinary
-cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure: true,
-});
-
-// Función para subir archivos a Cloudinary
+// Función para subir archivos directamente a Cloudinary desde el cliente
 export const uploadToCloudinary = async (file, options = {}) => {
   try {
     const formData = new FormData();
@@ -44,7 +36,9 @@ export const uploadToCloudinary = async (file, options = {}) => {
     );
 
     if (!response.ok) {
-      throw new Error("Error uploading to Cloudinary");
+      const errorText = await response.text();
+      console.error("Cloudinary response error:", errorText);
+      throw new Error(`Error uploading to Cloudinary: ${response.status}`);
     }
 
     const data = await response.json();
@@ -63,7 +57,7 @@ export const uploadToCloudinary = async (file, options = {}) => {
   }
 };
 
-// Función para eliminar archivos de Cloudinary
+// Función para eliminar archivos usando API route
 export const deleteFromCloudinary = async (publicId) => {
   try {
     const response = await fetch("/api/cloudinary/delete", {
@@ -129,4 +123,37 @@ export const getThumbnailUrl = (publicId, size = 150) => {
   });
 };
 
-export default cloudinary;
+// Función para validar archivos antes de subirlos
+export const validateFile = (file, options = {}) => {
+  const maxSize = options.maxSize || 10 * 1024 * 1024; // 10MB por defecto
+  const allowedTypes = options.allowedTypes || ["image/", "application/pdf"];
+
+  if (file.size > maxSize) {
+    throw new Error(
+      `El archivo es demasiado grande. Máximo ${Math.round(
+        maxSize / 1024 / 1024
+      )}MB`
+    );
+  }
+
+  const isValidType = allowedTypes.some(
+    (type) => file.type.startsWith(type) || file.type === type
+  );
+  if (!isValidType) {
+    throw new Error(
+      "Tipo de archivo no permitido. Solo se permiten imágenes y PDFs"
+    );
+  }
+
+  return true;
+};
+
+// Función para generar nombre único de archivo
+export const generateUniqueFileName = (originalName, clientId) => {
+  const timestamp = new Date().getTime();
+  const randomString = Math.random().toString(36).substring(2, 8);
+  const extension = originalName.split(".").pop();
+  const baseName = originalName.split(".").slice(0, -1).join(".");
+
+  return `${clientId}_${baseName}_${timestamp}_${randomString}.${extension}`;
+};

@@ -8,7 +8,12 @@ import {
   getDocumentStats,
   searchDocuments,
 } from "@/lib/api-client";
-import { uploadToCloudinary, deleteFromCloudinary } from "@/lib/cloudinary";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  validateFile,
+  generateUniqueFileName,
+} from "@/lib/cloudinary";
 import { useToast } from "@/hooks/use-toast";
 
 export function useDocuments(initialFilters = {}) {
@@ -90,23 +95,25 @@ export function useDocuments(initialFilters = {}) {
       setIsUploading(true);
 
       try {
-        // Validar tipo de archivo
-        if (
-          !file.type.startsWith("image/") &&
-          file.type !== "application/pdf"
-        ) {
-          throw new Error("Solo se permiten imágenes y archivos PDF");
-        }
+        // Validar archivo
+        validateFile(file, {
+          maxSize: 10 * 1024 * 1024, // 10MB
+          allowedTypes: ["image/", "application/pdf"],
+        });
 
-        // Validar tamaño (10MB máximo)
-        if (file.size > 10 * 1024 * 1024) {
-          throw new Error("El archivo es demasiado grande. Máximo 10MB");
-        }
+        // Generar nombre único
+        const uniqueFileName = generateUniqueFileName(
+          file.name,
+          documentData.clientId
+        );
 
         // Subir a Cloudinary
         const cloudinaryResult = await uploadToCloudinary(file, {
           folder: `prestamos-app/documents/${documentData.clientId}`,
           tags: [documentData.documentType, "documents"],
+          publicId: `${documentData.clientId}/${Date.now()}_${
+            file.name.split(".")[0]
+          }`,
         });
 
         // Crear documento en la base de datos
@@ -114,7 +121,7 @@ export function useDocuments(initialFilters = {}) {
           clientId: documentData.clientId,
           loanId: documentData.loanId || null,
           productId: documentData.productId || null,
-          fileName: file.name,
+          fileName: uniqueFileName,
           fileSize: file.size,
           fileType: file.type,
           cloudinaryPublicId: cloudinaryResult.publicId,
@@ -190,7 +197,9 @@ export function useDocuments(initialFilters = {}) {
     async (document) => {
       try {
         // Eliminar de Cloudinary
-        await deleteFromCloudinary(document.cloudinary_public_id);
+        if (document.cloudinary_public_id) {
+          await deleteFromCloudinary(document.cloudinary_public_id);
+        }
 
         // Eliminar de la base de datos
         await deleteDocument(document.id);
@@ -207,9 +216,9 @@ export function useDocuments(initialFilters = {}) {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "No se pudo eliminar el documento",
+          description: "No se pudo eliminar el documento completamente",
         });
-        throw error;
+        // No hacer throw para que al menos se elimine de la BD
       }
     },
     [loadDocuments, loadStats, toast]
@@ -221,24 +230,35 @@ export function useDocuments(initialFilters = {}) {
       const results = [];
       const errors = [];
 
-      for (const file of files) {
-        try {
-          const result = await uploadDocument(file, documentData);
-          results.push(result);
-        } catch (error) {
-          errors.push({ file: file.name, error: error.message });
+      setIsUploading(true);
+
+      try {
+        for (const file of files) {
+          try {
+            const result = await uploadDocument(file, documentData);
+            results.push(result);
+          } catch (error) {
+            errors.push({ file: file.name, error: error.message });
+          }
         }
-      }
 
-      if (errors.length > 0) {
-        toast({
-          variant: "destructive",
-          title: "Algunos archivos no se pudieron subir",
-          description: `${errors.length} de ${files.length} archivos fallaron`,
-        });
-      }
+        if (errors.length > 0) {
+          toast({
+            variant: "destructive",
+            title: "Algunos archivos no se pudieron subir",
+            description: `${errors.length} de ${files.length} archivos fallaron`,
+          });
+        } else if (results.length > 0) {
+          toast({
+            title: "Archivos subidos",
+            description: `${results.length} archivos subidos correctamente`,
+          });
+        }
 
-      return { results, errors };
+        return { results, errors };
+      } finally {
+        setIsUploading(false);
+      }
     },
     [uploadDocument, toast]
   );
@@ -249,7 +269,9 @@ export function useDocuments(initialFilters = {}) {
   }, []);
 
   useEffect(() => {
-    loadDocuments();
+    if (typeof window !== "undefined") {
+      loadDocuments();
+    }
   }, [filters]);
 
   return {
