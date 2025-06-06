@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   updateProfile,
-  updateEmail,
   updatePassword,
   deleteAccount,
   getProfileData,
@@ -23,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, User, Mail, Lock, Trash } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { EmailChangeComponent } from "@/components/profile/EmailChangeComponent";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -300,81 +300,16 @@ export default function ProfilePage() {
         {/* Pestaña de Email */}
 
         <TabsContent value="email">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cambiar Email</CardTitle>
-              <CardDescription>
-                Actualiza tu dirección de correo electrónico
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleEmailUpdate}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="currentEmail">Email Actual</Label>
-                  <Input
-                    id="currentEmail"
-                    type="email"
-                    value={profile?.email || ""}
-                    disabled
-                    className="bg-gray-100 dark:bg-gray-800"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newEmail">Nuevo Email</Label>
-                  <Input
-                    id="newEmail"
-                    type="email"
-                    value={emailForm.newEmail}
-                    onChange={(e) =>
-                      setEmailForm({ ...emailForm, newEmail: e.target.value })
-                    }
-                    placeholder="nuevo@email.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="passwordEmail">Contraseña actual</Label>
-                  <Input
-                    id="passwordEmail"
-                    type="password"
-                    value={emailForm.password}
-                    onChange={(e) =>
-                      setEmailForm({ ...emailForm, password: e.target.value })
-                    }
-                    placeholder="Confirma tu contraseña"
-                  />
-                </div>
-
-                {/* Mensaje informativo */}
-                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                  <div className="flex items-start">
-                    <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 mr-2 flex-shrink-0" />
-                    <div className="text-sm text-blue-800 dark:text-blue-200">
-                      <p className="font-medium mb-1">
-                        ¿Cómo funciona el cambio de email?
-                      </p>
-                      <ul className="list-disc list-inside space-y-1 text-xs">
-                        <li>
-                          Se enviará un enlace de confirmación a tu nuevo email
-                        </li>
-                        <li>
-                          Debes hacer clic en el enlace para confirmar el cambio
-                        </li>
-                        <li>
-                          Tu email actual seguirá activo hasta confirmar el
-                          nuevo
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Enviando..." : "Enviar Confirmación"}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
+          <EmailChangeComponent
+            profile={profile}
+            onProfileUpdate={(newProfile) => {
+              setProfile(newProfile);
+              setProfileForm({
+                fullName: newProfile.fullName || "",
+                companyName: newProfile.companyName || "",
+              });
+            }}
+          />
         </TabsContent>
         {/* Pestaña de Contraseña */}
         <TabsContent value="password">

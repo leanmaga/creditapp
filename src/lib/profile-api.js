@@ -30,7 +30,6 @@ export async function updateProfile(profileData) {
   return data;
 }
 
-// Cambiar correo electrónico
 export async function updateEmail(newEmail, password) {
   // Obtener email actual
   const {
@@ -55,8 +54,10 @@ export async function updateEmail(newEmail, password) {
   if (error) throw error;
 
   return {
-    message:
-      "Se ha enviado un enlace de verificación a tu nuevo correo electrónico",
+    message: "Proceso de cambio de email iniciado",
+    currentEmail: user.email,
+    newEmail: newEmail,
+    step: "pending_current_confirmation",
   };
 }
 
