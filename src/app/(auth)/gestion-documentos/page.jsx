@@ -541,19 +541,85 @@ export default function DocumentManagementSystem() {
                   />
                 </div>
                 <Select
-                  value={filters.clientId}
+                  value={filters.clientId || "all"}
                   onValueChange={(value) =>
-                    setFilters({ ...filters, clientId: value })
+                    setFilters({
+                      ...filters,
+                      clientId: value === "all" ? "" : value,
+                    })
                   }
                 >
                   <SelectTrigger className="w-40">
                     <SelectValue placeholder="Cliente" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>{" "}
+                    {/* 👈 Cambiar de value="" a value="all" */}
                     {clients.map((client) => (
                       <SelectItem key={client.id} value={client.id}>
                         {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={filters.verificationStatus || "all"}
+                  onValueChange={(value) =>
+                    setFilters({
+                      ...filters,
+                      verificationStatus: value === "all" ? "" : value,
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>{" "}
+                    {/* 👈 Cambiar de value="" a value="all" */}
+                    <SelectItem value="pending">Pendientes</SelectItem>
+                    <SelectItem value="verified">Verificados</SelectItem>
+                    <SelectItem value="rejected">Rechazados</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={uploadData.clientId || "none"}
+                  onValueChange={(value) =>
+                    setUploadData({
+                      ...uploadData,
+                      clientId: value === "none" ? "" : value,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none" disabled>
+                      Seleccionar cliente
+                    </SelectItem>{" "}
+                    {/* 👈 Opción por defecto */}
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={uploadData.documentType || "comprobante_pago"}
+                  onValueChange={(value) =>
+                    setUploadData({ ...uploadData, documentType: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {documentTypes.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
