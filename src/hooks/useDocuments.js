@@ -1,4 +1,4 @@
-// src/hooks/useDocuments.js
+// src/hooks/useDocuments.js - Versión corregida
 import { useState, useEffect, useCallback } from "react";
 import {
   fetchDocuments,
@@ -8,13 +8,78 @@ import {
   getDocumentStats,
   searchDocuments,
 } from "@/lib/api-client";
-import {
-  uploadToCloudinary,
-  deleteFromCloudinary,
-  validateFile,
-  generateUniqueFileName,
-} from "@/lib/cloudinary";
 import { useToast } from "@/hooks/use-toast";
+
+// Funciones de Cloudinary simplificadas para evitar errores
+const uploadToCloudinary = async (file, options = {}) => {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append(
+      "upload_preset",
+      process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+    );
+
+    if (options.folder) {
+      formData.append("folder", options.folder);
+    }
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/auto/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Error uploading to Cloudinary: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      publicId: data.public_id,
+      url: data.url,
+      secureUrl: data.secure_url,
+    };
+  } catch (error) {
+    console.error("Cloudinary upload error:", error);
+    throw error;
+  }
+};
+
+const validateFile = (file, options = {}) => {
+  const maxSize = options.maxSize || 10 * 1024 * 1024; // 10MB
+  const allowedTypes = options.allowedTypes || ["image/", "application/pdf"];
+
+  if (file.size > maxSize) {
+    throw new Error(
+      `El archivo es demasiado grande. Máximo ${Math.round(
+        maxSize / 1024 / 1024
+      )}MB`
+    );
+  }
+
+  const isValidType = allowedTypes.some(
+    (type) => file.type.startsWith(type) || file.type === type
+  );
+  if (!isValidType) {
+    throw new Error(
+      "Tipo de archivo no permitido. Solo se permiten imágenes y PDFs"
+    );
+  }
+
+  return true;
+};
+
+const generateUniqueFileName = (originalName, clientId) => {
+  const timestamp = new Date().getTime();
+  const randomString = Math.random().toString(36).substring(2, 8);
+  const extension = originalName.split(".").pop();
+  const baseName = originalName.split(".").slice(0, -1).join(".");
+
+  return `${clientId}_${baseName}_${timestamp}_${randomString}.${extension}`;
+};
 
 export function useDocuments(initialFilters = {}) {
   const { toast } = useToast();
@@ -32,7 +97,26 @@ export function useDocuments(initialFilters = {}) {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [filters, setFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState({
+    searchTerm: "",
+    clientId: "",
+    documentType: "",
+    verificationStatus: "",
+    ...initialFilters,
+  });
+
+  // Verificar configuración de Cloudinary
+  const checkCloudinaryConfig = useCallback(() => {
+    if (!process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME) {
+      console.error("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME no está configurado");
+      return false;
+    }
+    if (!process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET) {
+      console.error("NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET no está configurado");
+      return false;
+    }
+    return true;
+  }, []);
 
   // Cargar documentos
   const loadDocuments = useCallback(async () => {
@@ -48,15 +132,14 @@ export function useDocuments(initialFilters = {}) {
           filterParams.documentType = filters.documentType;
         if (filters.verificationStatus)
           filterParams.verificationStatus = filters.verificationStatus;
-        if (filters.dateFrom) filterParams.dateFrom = filters.dateFrom;
-        if (filters.dateTo) filterParams.dateTo = filters.dateTo;
 
         documentsData = await fetchDocuments(filterParams);
       }
 
-      setDocuments(documentsData);
+      setDocuments(documentsData || []);
     } catch (error) {
       console.error("Error loading documents:", error);
+      setDocuments([]);
       toast({
         variant: "destructive",
         title: "Error",
@@ -69,9 +152,10 @@ export function useDocuments(initialFilters = {}) {
   const loadStats = useCallback(async () => {
     try {
       const statsData = await getDocumentStats();
-      setStats(statsData);
+      setStats(statsData || stats);
     } catch (error) {
       console.error("Error loading stats:", error);
+      // No mostrar error aquí, usar valores por defecto
     }
   }, []);
 
@@ -80,6 +164,8 @@ export function useDocuments(initialFilters = {}) {
     setIsLoading(true);
     try {
       await Promise.all([loadDocuments(), loadStats()]);
+    } catch (error) {
+      console.error("Error loading data:", error);
     } finally {
       setIsLoading(false);
     }
@@ -90,6 +176,11 @@ export function useDocuments(initialFilters = {}) {
     async (file, documentData) => {
       if (!documentData.clientId) {
         throw new Error("Cliente es requerido");
+      }
+
+      // Verificar configuración de Cloudinary
+      if (!checkCloudinaryConfig()) {
+        throw new Error("Cloudinary no está configurado correctamente");
       }
 
       setIsUploading(true);
@@ -110,10 +201,6 @@ export function useDocuments(initialFilters = {}) {
         // Subir a Cloudinary
         const cloudinaryResult = await uploadToCloudinary(file, {
           folder: `prestamos-app/documents/${documentData.clientId}`,
-          tags: [documentData.documentType, "documents"],
-          publicId: `${documentData.clientId}/${Date.now()}_${
-            file.name.split(".")[0]
-          }`,
         });
 
         // Crear documento en la base de datos
@@ -156,7 +243,7 @@ export function useDocuments(initialFilters = {}) {
         setIsUploading(false);
       }
     },
-    [loadDocuments, loadStats, toast]
+    [loadDocuments, loadStats, toast, checkCloudinaryConfig]
   );
 
   // Verificar documento
@@ -196,12 +283,7 @@ export function useDocuments(initialFilters = {}) {
   const removeDocument = useCallback(
     async (document) => {
       try {
-        // Eliminar de Cloudinary
-        if (document.cloudinary_public_id) {
-          await deleteFromCloudinary(document.cloudinary_public_id);
-        }
-
-        // Eliminar de la base de datos
+        // Eliminar de la base de datos (la API route se encarga de Cloudinary)
         await deleteDocument(document.id);
 
         // Recargar datos
@@ -216,9 +298,8 @@ export function useDocuments(initialFilters = {}) {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "No se pudo eliminar el documento completamente",
+          description: "No se pudo eliminar el documento",
         });
-        // No hacer throw para que al menos se elimine de la BD
       }
     },
     [loadDocuments, loadStats, toast]
@@ -269,10 +350,12 @@ export function useDocuments(initialFilters = {}) {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    const timeoutId = setTimeout(() => {
       loadDocuments();
-    }
-  }, [filters]);
+    }, 300); // Debounce para búsqueda
+
+    return () => clearTimeout(timeoutId);
+  }, [filters.searchTerm, filters.clientId, filters.verificationStatus]);
 
   return {
     // Estados
