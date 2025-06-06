@@ -1126,33 +1126,6 @@ export async function searchProducts(searchTerm) {
   return data || [];
 }
 
-export async function getClientProductHistory(clientId) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return [];
-
-  const { data, error } = await supabase
-    .from("purchased_products")
-    .select(
-      `
-      *,
-      product_payments(*)
-    `
-    )
-    .eq("client_id", clientId)
-    .eq("user_id", user.id)
-    .order("purchase_date", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching client product history:", error);
-    return [];
-  }
-
-  return data || [];
-}
-
 // 6. INTEGRACIÓN CON SISTEMA EXISTENTE
 
 export async function fetchClientWithProducts(clientId) {
@@ -1205,4 +1178,279 @@ export async function getProductPurchaseSettings() {
       { value: "excellent", label: "Excelente", color: "text-green-600" },
     ],
   };
+}
+
+export async function getClientProductHistory(clientId) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("purchased_products")
+    .select(
+      `
+      *,
+      product_payments(*)
+    `
+    )
+    .eq("client_id", clientId)
+    .eq("user_id", user.id)
+    .order("purchase_date", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching client product history:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// FUNCIONES PARA GESTIÓN DE DOCUMENTOS
+
+export async function createDocument(documentData) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
+  const { data, error } = await supabase
+    .from("documents")
+    .insert({
+      user_id: user.id,
+      client_id: documentData.clientId,
+      loan_id: documentData.loanId || null,
+      product_id: documentData.productId || null,
+      file_name: documentData.fileName,
+      file_size: documentData.fileSize,
+      file_type: documentData.fileType,
+      cloudinary_public_id: documentData.cloudinaryPublicId,
+      cloudinary_url: documentData.cloudinaryUrl,
+      cloudinary_secure_url: documentData.cloudinarySecureUrl,
+      document_type: documentData.documentType,
+      amount: documentData.amount || null,
+      payment_date: documentData.paymentDate || null,
+      notes: documentData.notes || null,
+    })
+    .select(
+      `
+      *,
+      clients(id, name),
+      loans(id),
+      purchased_products(id, product_name)
+    `
+    )
+    .single();
+
+  if (error) {
+    console.error("Error creating document:", error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function fetchDocuments(filters = {}) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  let query = supabase
+    .from("documents")
+    .select(
+      `
+      *,
+      clients(id, name),
+      loans(id),
+      purchased_products(id, product_name)
+    `
+    )
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  // Aplicar filtros
+  if (filters.clientId) {
+    query = query.eq("client_id", filters.clientId);
+  }
+
+  if (filters.loanId) {
+    query = query.eq("loan_id", filters.loanId);
+  }
+
+  if (filters.productId) {
+    query = query.eq("product_id", filters.productId);
+  }
+
+  if (filters.documentType) {
+    query = query.eq("document_type", filters.documentType);
+  }
+
+  if (filters.verificationStatus) {
+    query = query.eq("verification_status", filters.verificationStatus);
+  }
+
+  if (filters.dateFrom) {
+    query = query.gte("created_at", filters.dateFrom);
+  }
+
+  if (filters.dateTo) {
+    query = query.lte("created_at", filters.dateTo);
+  }
+
+  if (filters.limit) {
+    query = query.limit(filters.limit);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error fetching documents:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+export async function updateDocumentVerification(documentId, verificationData) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
+  const updateData = {
+    verification_status: verificationData.status,
+    verified_by: user.id,
+    verified_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (verificationData.rejectionReason) {
+    updateData.rejection_reason = verificationData.rejectionReason;
+  }
+
+  const { data, error } = await supabase
+    .from("documents")
+    .update(updateData)
+    .eq("id", documentId)
+    .eq("user_id", user.id)
+    .select(
+      `
+      *,
+      clients(id, name),
+      loans(id),
+      purchased_products(id, product_name)
+    `
+    )
+    .single();
+
+  if (error) {
+    console.error("Error updating document verification:", error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function deleteDocument(documentId) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuario no autenticado");
+
+  const { error } = await supabase
+    .from("documents")
+    .delete()
+    .eq("id", documentId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.error("Error deleting document:", error);
+    throw new Error(error.message);
+  }
+
+  return true;
+}
+
+export async function getDocumentStats() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      totalDocuments: 0,
+      verifiedDocuments: 0,
+      pendingDocuments: 0,
+      rejectedDocuments: 0,
+      paymentReceipts: 0,
+      todayUploads: 0,
+      totalStorageUsed: 0,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("document_stats")
+    .select("*")
+    .eq("user_id", user.id)
+    .single();
+
+  if (error && error.code !== "PGRST116") {
+    console.error("Error fetching document stats:", error);
+    return {
+      totalDocuments: 0,
+      verifiedDocuments: 0,
+      pendingDocuments: 0,
+      rejectedDocuments: 0,
+      paymentReceipts: 0,
+      todayUploads: 0,
+      totalStorageUsed: 0,
+    };
+  }
+
+  return {
+    totalDocuments: data?.total_documents || 0,
+    verifiedDocuments: data?.verified_documents || 0,
+    pendingDocuments: data?.pending_documents || 0,
+    rejectedDocuments: data?.rejected_documents || 0,
+    paymentReceipts: data?.payment_receipts || 0,
+    todayUploads: data?.today_uploads || 0,
+    totalStorageUsed: data?.total_storage_used || 0,
+  };
+}
+
+export async function searchDocuments(searchTerm) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select(
+      `
+      *,
+      clients(id, name),
+      loans(id),
+      purchased_products(id, product_name)
+    `
+    )
+    .eq("user_id", user.id)
+    .or(
+      `file_name.ilike.%${searchTerm}%,notes.ilike.%${searchTerm}%,clients.name.ilike.%${searchTerm}%`
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error searching documents:", error);
+    return [];
+  }
+
+  return data || [];
 }
