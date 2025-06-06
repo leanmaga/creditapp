@@ -1,5 +1,5 @@
 // src/app/(auth)/compras/page.jsx
-import ProductPurchaseSystem from "@/components/product-purchase/ProductPurchaseSystem";
+import ProductPurchaseSystem from "@/components/produts/ProductPurchaseSystem";
 import ProtectedRoute from "@/components/products/ProtectedRoute";
 
 export default function ProductPurchasePage() {
