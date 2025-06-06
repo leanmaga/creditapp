@@ -1,9 +1,7 @@
-// app/perfil/page.js
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import {
   updateProfile,
   updateEmail,
@@ -95,6 +93,8 @@ export default function ProfilePage() {
     }
   };
 
+  // Reemplaza la función handleEmailUpdate en src/app/profile/page.js
+
   const handleEmailUpdate = async (e) => {
     e.preventDefault();
     setSuccessMessage("");
@@ -105,12 +105,26 @@ export default function ProfilePage() {
       return;
     }
 
+    // Verificar que el nuevo email sea diferente al actual
+    if (emailForm.newEmail === profile?.email) {
+      setErrorMessage("El nuevo email debe ser diferente al actual");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const result = await updateEmail(emailForm.newEmail, emailForm.password);
-      setSuccessMessage(result.message);
+
+      // Mensaje más detallado
+      setSuccessMessage(
+        `✅ ${result.message}\n\n📧 Revisa tu bandeja de entrada en: ${emailForm.newEmail}\n📁 Si no lo encuentras, revisa tu carpeta de spam\n⏰ El enlace expira en 24 horas`
+      );
+
+      // Limpiar solo la contraseña, mantener el nuevo email para referencia
       setEmailForm({ ...emailForm, password: "" });
+
+      // NO redirigir automáticamente - dejar que el usuario lea el mensaje
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -229,8 +243,8 @@ export default function ProfilePage() {
             <span className="hidden md:inline">Eliminar</span>
           </TabsTrigger>
         </TabsList>
-
         {/* Pestaña de Perfil */}
+
         <TabsContent value="profile">
           <Card>
             <CardHeader>
@@ -283,8 +297,8 @@ export default function ProfilePage() {
             </form>
           </Card>
         </TabsContent>
-
         {/* Pestaña de Email */}
+
         <TabsContent value="email">
           <Card>
             <CardHeader>
@@ -295,6 +309,16 @@ export default function ProfilePage() {
             </CardHeader>
             <form onSubmit={handleEmailUpdate}>
               <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currentEmail">Email Actual</Label>
+                  <Input
+                    id="currentEmail"
+                    type="email"
+                    value={profile?.email || ""}
+                    disabled
+                    className="bg-gray-100 dark:bg-gray-800"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="newEmail">Nuevo Email</Label>
                   <Input
@@ -319,16 +343,39 @@ export default function ProfilePage() {
                     placeholder="Confirma tu contraseña"
                   />
                 </div>
+
+                {/* Mensaje informativo */}
+                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 mr-2 flex-shrink-0" />
+                    <div className="text-sm text-blue-800 dark:text-blue-200">
+                      <p className="font-medium mb-1">
+                        ¿Cómo funciona el cambio de email?
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-xs">
+                        <li>
+                          Se enviará un enlace de confirmación a tu nuevo email
+                        </li>
+                        <li>
+                          Debes hacer clic en el enlace para confirmar el cambio
+                        </li>
+                        <li>
+                          Tu email actual seguirá activo hasta confirmar el
+                          nuevo
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
               <CardFooter>
                 <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Actualizando..." : "Actualizar Email"}
+                  {isLoading ? "Enviando..." : "Enviar Confirmación"}
                 </Button>
               </CardFooter>
             </form>
           </Card>
         </TabsContent>
-
         {/* Pestaña de Contraseña */}
         <TabsContent value="password">
           <Card>
@@ -394,7 +441,6 @@ export default function ProfilePage() {
             </form>
           </Card>
         </TabsContent>
-
         {/* Pestaña de Eliminar Cuenta */}
         <TabsContent value="delete">
           <Card className="border-red-200 dark:border-red-800">
