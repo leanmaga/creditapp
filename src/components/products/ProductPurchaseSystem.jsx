@@ -61,6 +61,8 @@ export default function ProductPurchaseSystem() {
   const [activeTab, setActiveTab] = useState("requests");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [customMonths, setCustomMonths] = useState("");
+  const [monthsType, setMonthsType] = useState("preset");
 
   // Estados para datos reales
   const [stats, setStats] = useState({
@@ -353,21 +355,24 @@ export default function ProductPurchaseSystem() {
       setPurchaseRequests(requestsData);
       setStats(statsData);
 
-      // Reset form
-      setNewRequest({
-        clientId: "",
-        productName: "",
-        productUrl: "",
-        purchasePrice: "",
-        interestAmount: "",
-        store: "",
-        reason: "",
-        months: 12,
-        interestRate: 30,
-        urgency: "medium",
-        clientCredit: "good",
-        notes: "",
-      });
+      const resetForm = () => {
+        setNewRequest({
+          clientId: "",
+          productName: "",
+          productUrl: "",
+          purchasePrice: "",
+          interestAmount: "",
+          store: "",
+          reason: "",
+          months: 12,
+          interestRate: 30,
+          urgency: "medium",
+          clientCredit: "good",
+          notes: "",
+        }); // Agregar estos resets:
+        setCustomMonths("");
+        setMonthsType("preset");
+      };
 
       setActiveTab("requests");
       toast({
@@ -1213,28 +1218,83 @@ export default function ProductPurchaseSystem() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label
-                  htmlFor="months"
-                  className="text-gray-700 dark:text-gray-300"
-                >
+                <Label className="text-gray-700 dark:text-gray-300">
                   Plazo en Meses
                 </Label>
-                <Select
-                  value={newRequest.months.toString()}
-                  onValueChange={(value) =>
-                    setNewRequest({ ...newRequest, months: parseInt(value) })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="6">6 meses</SelectItem>
-                    <SelectItem value="12">12 meses</SelectItem>
-                    <SelectItem value="18">18 meses</SelectItem>
-                    <SelectItem value="24">24 meses</SelectItem>
-                  </SelectContent>
-                </Select>
+
+                {/* Botones para elegir tipo */}
+                <div className="flex gap-2 mb-2">
+                  <Button
+                    type="button"
+                    variant={monthsType === "preset" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setMonthsType("preset");
+                      setCustomMonths("");
+                    }}
+                  >
+                    📋 Opciones Comunes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={monthsType === "custom" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMonthsType("custom")}
+                  >
+                    ✏️ Personalizado
+                  </Button>
+                </div>
+
+                {/* Selector de opciones comunes */}
+                {monthsType === "preset" && (
+                  <Select
+                    value={newRequest.months.toString()}
+                    onValueChange={(value) =>
+                      setNewRequest({ ...newRequest, months: parseInt(value) })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3">3 meses</SelectItem>
+                      <SelectItem value="6">6 meses</SelectItem>
+                      <SelectItem value="9">9 meses</SelectItem>
+                      <SelectItem value="12">12 meses</SelectItem>
+                      <SelectItem value="15">15 meses</SelectItem>
+                      <SelectItem value="18">18 meses</SelectItem>
+                      <SelectItem value="21">21 meses</SelectItem>
+                      <SelectItem value="24">24 meses</SelectItem>
+                      <SelectItem value="30">30 meses</SelectItem>
+                      <SelectItem value="36">36 meses</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Input personalizado */}
+                {monthsType === "custom" && (
+                  <div className="space-y-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="60"
+                      placeholder="Ej: 15"
+                      value={customMonths}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 0;
+                        if (value >= 1 && value <= 60) {
+                          setCustomMonths(e.target.value);
+                          setNewRequest({ ...newRequest, months: value });
+                        }
+                      }}
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      💡 Ingresa entre 1 y 60 meses según las necesidades del
+                      cliente
+                    </p>
+                  </div>
+                )}
               </div>
               <div>
                 <Label
