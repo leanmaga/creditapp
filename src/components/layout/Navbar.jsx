@@ -1,3 +1,4 @@
+// src/components/layout/Navbar.jsx - Versión actualizada
 "use client";
 
 import { useState, useEffect } from "react";
@@ -14,6 +15,7 @@ import {
   X,
   LogOut,
   User,
+  ShoppingCart,
 } from "lucide-react";
 
 export function Navbar() {
@@ -98,6 +100,17 @@ export function Navbar() {
                   <span className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
                     <span className="hidden md:block">Clientes</span>
+                  </span>
+                </Link>
+                <Link
+                  href="/compras"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive(
+                    "/compras"
+                  )}`}
+                >
+                  <span className="flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="hidden md:block">Compras</span>
                   </span>
                 </Link>
                 <Link
@@ -205,6 +218,18 @@ export function Navbar() {
                 <span className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   <span>Clientes</span>
+                </span>
+              </Link>
+              <Link
+                href="/compras"
+                className={`block px-3 py-2 rounded-md text-sm font-medium ${isActive(
+                  "/compras"
+                )}`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <span className="flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4" />
+                  <span>Compras</span>
                 </span>
               </Link>
               <Link

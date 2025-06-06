@@ -617,3 +617,460 @@ export async function fetchStatsData() {
     };
   }
 }
+
+export async function createProductRequest(requestData) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Calcular detalles del préstamo
+  const interestAmount =
+    (requestData.requestedPrice * requestData.interestRate) / 100;
+  const totalAmount = requestData.requestedPrice + interestAmount;
+  const monthlyPayment = totalAmount / requestData.months;
+
+  const { data, error } = await supabase
+    .from("product_purchase_requests")
+    .insert({
+      client_id: requestData.clientId,
+      product_name: requestData.productName,
+      product_url: requestData.productUrl,
+      estimated_price: requestData.estimatedPrice,
+      requested_price: requestData.requestedPrice,
+      store: requestData.store,
+      reason: requestData.reason,
+      urgency: requestData.urgency || "medium",
+      months: requestData.months,
+      interest_rate: requestData.interestRate,
+      monthly_payment: monthlyPayment,
+      total_amount: totalAmount,
+      client_credit_score: requestData.clientCredit,
+      internal_notes: requestData.notes,
+      user_id: user.id,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchProductRequests(status = null) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let query = supabase
+    .from("product_purchase_requests")
+    .select(
+      `
+      *,
+      clients(id, name, phone, email)
+    `
+    )
+    .eq("user_id", user.id)
+    .order("request_date", { ascending: false });
+
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function updateRequestStatus(requestId, status, notes = null) {
+  const updateData = {
+    status,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (status === "approved") {
+    updateData.approved_date = new Date().toISOString();
+  }
+
+  if (notes) {
+    updateData.internal_notes = notes;
+  }
+
+  const { data, error } = await supabase
+    .from("product_purchase_requests")
+    .update(updateData)
+    .eq("id", requestId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// 2. PRODUCTOS COMPRADOS
+
+export async function createPurchasedProduct(purchaseData) {
+  const { data, error } = await supabase.rpc("approve_product_request", {
+    p_request_id: purchaseData.requestId,
+    p_actual_price: purchaseData.actualPrice,
+    p_purchase_date:
+      purchaseData.purchaseDate || new Date().toISOString().split("T")[0],
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchPurchasedProducts(clientId = null) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let query = supabase
+    .from("purchased_products")
+    .select(
+      `
+      *,
+      clients(id, name, phone, email),
+      product_purchase_requests(product_url, reason)
+    `
+    )
+    .eq("user_id", user.id)
+    .order("purchase_date", { ascending: false });
+
+  if (clientId) {
+    query = query.eq("client_id", clientId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function updateProductStatus(
+  productId,
+  status,
+  deliveryDate = null
+) {
+  const updateData = {
+    status,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (deliveryDate) {
+    updateData.delivery_date = deliveryDate;
+  }
+
+  const { data, error } = await supabase
+    .from("purchased_products")
+    .update(updateData)
+    .eq("id", productId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// 3. PAGOS DE PRODUCTOS
+
+export async function fetchProductPayments(productId) {
+  const { data, error } = await supabase
+    .from("product_payments")
+    .select("*")
+    .eq("purchased_product_id", productId)
+    .order("installment_number");
+
+  if (error) throw error;
+  return data;
+}
+
+export async function payProductInstallment(paymentId, paymentData) {
+  const { data, error } = await supabase
+    .from("product_payments")
+    .update({
+      paid: true,
+      payment_date:
+        paymentData.paymentDate || new Date().toISOString().split("T")[0],
+      payment_method: paymentData.paymentMethod || "transferencia",
+      notes: paymentData.notes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", paymentId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getOverdueProductPayments() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
+    .from("product_payments")
+    .select(
+      `
+      *,
+      purchased_products(id, product_name, client_id),
+      clients(name, phone)
+    `
+    )
+    .eq("paid", false)
+    .lt("due_date", new Date().toISOString().split("T")[0])
+    .eq("user_id", user.id)
+    .order("due_date");
+
+  if (error) throw error;
+  return data;
+}
+
+// 4. ESTADÍSTICAS Y REPORTES
+
+export async function getProductPurchaseStats() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  try {
+    // Solicitudes pendientes
+    const { count: pendingRequests } = await supabase
+      .from("product_purchase_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .eq("user_id", user.id);
+
+    // Solicitudes aprobadas para comprar
+    const { count: approvedRequests } = await supabase
+      .from("product_purchase_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "approved")
+      .eq("user_id", user.id);
+
+    // Productos activos (comprados pero no completamente pagados)
+    const { count: activeProducts } = await supabase
+      .from("purchased_products")
+      .select("id", { count: "exact", head: true })
+      .neq("status", "completed")
+      .eq("user_id", user.id);
+
+    // Ganancias realizadas (productos completados)
+    const { data: completedProducts } = await supabase
+      .from("purchased_products")
+      .select("direct_profit, total_amount, agreed_client_price")
+      .eq("status", "completed")
+      .eq("user_id", user.id);
+
+    const directProfits =
+      completedProducts?.reduce(
+        (sum, p) => sum + parseFloat(p.direct_profit || 0),
+        0
+      ) || 0;
+    const interestProfits =
+      completedProducts?.reduce(
+        (sum, p) =>
+          sum +
+          (parseFloat(p.total_amount || 0) -
+            parseFloat(p.agreed_client_price || 0)),
+        0
+      ) || 0;
+    const totalProfits = directProfits + interestProfits;
+
+    // Capital invertido actualmente
+    const { data: activeProductsData } = await supabase
+      .from("purchased_products")
+      .select("actual_purchase_price, total_paid")
+      .neq("status", "completed")
+      .eq("user_id", user.id);
+
+    const capitalInvested =
+      activeProductsData?.reduce(
+        (sum, p) => sum + parseFloat(p.actual_purchase_price || 0),
+        0
+      ) || 0;
+    const capitalRecovered =
+      activeProductsData?.reduce(
+        (sum, p) => sum + parseFloat(p.total_paid || 0),
+        0
+      ) || 0;
+
+    return {
+      pendingRequests: pendingRequests || 0,
+      approvedRequests: approvedRequests || 0,
+      activeProducts: activeProducts || 0,
+      totalProfits,
+      directProfits,
+      interestProfits,
+      capitalInvested,
+      capitalRecovered,
+      pendingCapital: capitalInvested - capitalRecovered,
+    };
+  } catch (error) {
+    console.error("Error fetching product purchase stats:", error);
+    return {
+      pendingRequests: 0,
+      approvedRequests: 0,
+      activeProducts: 0,
+      totalProfits: 0,
+      directProfits: 0,
+      interestProfits: 0,
+      capitalInvested: 0,
+      capitalRecovered: 0,
+      pendingCapital: 0,
+    };
+  }
+}
+
+export async function getProductPurchaseReport(startDate, endDate) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
+    .from("purchased_products")
+    .select(
+      `
+      *,
+      clients(name),
+      product_payments(amount, paid, payment_date)
+    `
+    )
+    .gte("purchase_date", startDate)
+    .lte("purchase_date", endDate)
+    .eq("user_id", user.id)
+    .order("purchase_date", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+// 5. UTILIDADES
+
+export async function searchProducts(searchTerm) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
+    .from("purchased_products")
+    .select(
+      `
+      *,
+      clients(name, phone)
+    `
+    )
+    .or(
+      `product_name.ilike.%${searchTerm}%, clients.name.ilike.%${searchTerm}%`
+    )
+    .eq("user_id", user.id)
+    .order("purchase_date", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getClientProductHistory(clientId) {
+  const { data, error } = await supabase
+    .from("purchased_products")
+    .select(
+      `
+      *,
+      product_payments(*)
+    `
+    )
+    .eq("client_id", clientId)
+    .order("purchase_date", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+// 6. INTEGRACIÓN CON SISTEMA EXISTENTE
+
+// Agregar esta función a tus funciones existentes de cliente
+export async function fetchClientWithProducts(clientId) {
+  try {
+    const clientData = await fetchClientById(clientId);
+    const productHistory = await getClientProductHistory(clientId);
+
+    return {
+      ...clientData,
+      purchasedProducts: productHistory,
+    };
+  } catch (error) {
+    console.error("Error fetching client with products:", error);
+    throw error;
+  }
+}
+
+// 7. NOTIFICACIONES Y ALERTAS
+
+export async function getProductPaymentAlerts() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const today = new Date().toISOString().split("T")[0];
+  const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
+
+  // Pagos vencidos
+  const { data: overdue } = await supabase
+    .from("product_payments")
+    .select(
+      `
+      *,
+      purchased_products(product_name),
+      clients(name, phone)
+    `
+    )
+    .eq("paid", false)
+    .lt("due_date", today)
+    .eq("user_id", user.id);
+
+  // Pagos próximos (próxima semana)
+  const { data: upcoming } = await supabase
+    .from("product_payments")
+    .select(
+      `
+      *,
+      purchased_products(product_name),
+      clients(name, phone)
+    `
+    )
+    .eq("paid", false)
+    .gte("due_date", today)
+    .lte("due_date", nextWeek)
+    .eq("user_id", user.id);
+
+  return {
+    overdue: overdue || [],
+    upcoming: upcoming || [],
+  };
+}
+
+// 8. FUNCIONES DE CONFIGURACIÓN
+
+export async function getProductPurchaseSettings() {
+  // Esta función puede expandirse para manejar configuraciones
+  // como tasas de interés por defecto, plazos preferidos, etc.
+  return {
+    defaultInterestRates: {
+      6: 25,
+      12: 30,
+      18: 35,
+      24: 40,
+    },
+    maxProductValue: 1000000,
+    minDownPayment: 20,
+    allowedStores: [
+      "MercadoLibre",
+      "Apple Store",
+      "Samsung Store",
+      "Compumundo",
+      "Garbarino",
+      "Frávega",
+    ],
+  };
+}
