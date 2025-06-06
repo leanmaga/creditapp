@@ -143,7 +143,6 @@ export function LoanDetail({ clientId, loanId }) {
         </Badge>
       );
     } else {
-      // Due in less than 7 days
       const diffTime = Math.abs(dueDate - today);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -171,7 +170,6 @@ export function LoanDetail({ clientId, loanId }) {
     }
   };
 
-  // Función para determinar el tipo de préstamo basado en los parámetros
   const getLoanType = (months, interestRate) => {
     if (months === 1 && interestRate === 50) {
       return {
@@ -249,14 +247,12 @@ export function LoanDetail({ clientId, loanId }) {
     .reduce((sum, inst) => sum + (inst.amount || 0), 0);
 
   const pendingAmount = (loan.total_amount || 0) - paidAmount;
-
   const paidInstallments = loan.installments.filter((inst) => inst.paid).length;
   const totalInstallments = loan.installments.length;
   const progressPercentage =
     totalInstallments > 0
       ? Math.round((paidInstallments / totalInstallments) * 100)
       : 0;
-
   const loanTypeInfo = getLoanType(loan.months, loan.interest_rate);
 
   return (
@@ -441,7 +437,7 @@ export function LoanDetail({ clientId, loanId }) {
                 <div
                   className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all duration-300 ease-in-out"
                   style={{ width: `${progressPercentage}%` }}
-                ></div>
+                />
               </div>
               <div className="flex justify-between mt-2 text-xs text-gray-600 dark:text-gray-400">
                 <span>
@@ -465,60 +461,71 @@ export function LoanDetail({ clientId, loanId }) {
               Historial de pagos del préstamo
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             {loan.installments && loan.installments.length > 0 ? (
-              <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
-                <div className="grid grid-cols-12 py-3 px-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300">
-                  <div className="col-span-1 font-medium">#</div>
-                  <div className="col-span-3 font-medium">Vencimiento</div>
-                  <div className="col-span-3 font-medium">Monto</div>
-                  <div className="col-span-3 font-medium">Estado</div>
-                  <div className="col-span-2 font-medium text-right">
-                    Acción
+              /**
+               * A partir de aquí envuelvo la “tabla” en un contenedor
+               * con overflow-x-auto, y al propio grid le pongo min-w-max,
+               * para que en mobile salga scroll horizontal si la pantalla es
+               * más angosta que la anchura natural de las 12 columnas:
+               **/
+              <div className="overflow-x-auto">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-w-max">
+                  {/* Header de la “tabla” */}
+                  <div className="grid grid-cols-12 py-3 px-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300">
+                    <div className="col-span-1 font-medium">#</div>
+                    <div className="col-span-3 font-medium">Vencimiento</div>
+                    <div className="col-span-3 font-medium">Monto</div>
+                    <div className="col-span-3 font-medium">Estado</div>
+                    <div className="col-span-2 font-medium text-right">
+                      Acción
+                    </div>
                   </div>
+                  {/* Filas de la “tabla” */}
+                  {loan.installments.map((installment) => (
+                    <div
+                      key={installment.id}
+                      className="grid grid-cols-12 py-3 px-4 border-b border-gray-200 dark:border-gray-800 last:border-b-0 items-center hover:bg-gray-50 dark:hover:bg-gray-900/60 transition-colors"
+                    >
+                      <div className="col-span-1 text-gray-900 dark:text-gray-100">
+                        {installment.installment_number}
+                      </div>
+                      <div className="col-span-3 flex items-center text-gray-900 dark:text-gray-100">
+                        <CalendarClock className="h-3.5 w-3.5 mr-1.5 text-gray-500 dark:text-gray-400" />
+                        {formatDate(installment.due_date)}
+                      </div>
+                      <div className="col-span-3 font-medium text-gray-900 dark:text-gray-100">
+                        {formatCurrency(installment.amount || 0)}
+                      </div>
+                      <div className="col-span-3">
+                        {getInstallmentStatusBadge(installment)}
+                        {installment.paid && installment.payment_date && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Pagada el {formatDate(installment.payment_date)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="col-span-2 text-right">
+                        {!installment.paid ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openPaymentDialog(installment)}
+                            className="border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
+                          >
+                            <Banknote className="h-3.5 w-3.5 mr-1" />
+                            Pagar
+                          </Button>
+                        ) : (
+                          <div className="flex items-center justify-end">
+                            <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {loan.installments.map((installment) => (
-                  <div
-                    key={installment.id}
-                    className="grid grid-cols-12 py-3 px-4 border-b border-gray-200 dark:border-gray-800 last:border-b-0 items-center hover:bg-gray-50 dark:hover:bg-gray-900/60 transition-colors"
-                  >
-                    <div className="col-span-1 text-gray-900 dark:text-gray-100">
-                      {installment.installment_number}
-                    </div>
-                    <div className="col-span-3 flex items-center text-gray-900 dark:text-gray-100">
-                      <CalendarClock className="h-3.5 w-3.5 mr-1.5 text-gray-500 dark:text-gray-400" />
-                      {formatDate(installment.due_date)}
-                    </div>
-                    <div className="col-span-3 font-medium text-gray-900 dark:text-gray-100">
-                      {formatCurrency(installment.amount || 0)}
-                    </div>
-                    <div className="col-span-3">
-                      {getInstallmentStatusBadge(installment)}
-                      {installment.paid && installment.payment_date && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Pagada el {formatDate(installment.payment_date)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="col-span-2 text-right">
-                      {!installment.paid ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openPaymentDialog(installment)}
-                          className="border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
-                        >
-                          <Banknote className="h-3.5 w-3.5 mr-1" />
-                          Pagar
-                        </Button>
-                      ) : (
-                        <div className="flex items-center justify-end">
-                          <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-600 dark:text-gray-400">

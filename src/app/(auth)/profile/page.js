@@ -217,10 +217,6 @@ export default function ProfilePage() {
           </Alert>
         )}
 
-        {/*
-          Usamos siempre “w-full max-w-lg mx-auto” en lugar de anchos en fracciones,
-          para que en móvil ocupe 100% y en desktop se centre con un ancho máximo razonable.
-        */}
         <Tabs
           defaultValue="profile"
           className="w-full max-w-lg mx-auto space-y-6"
