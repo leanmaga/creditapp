@@ -41,7 +41,7 @@ export function ProductPurchaseStats() {
       <Card className="transition-all duration-200 hover:shadow-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Sistema de Compras
+            Sistema de Productos
           </CardTitle>
           <ShoppingCart className="h-5 w-5 text-purple-500 dark:text-purple-400" />
         </CardHeader>

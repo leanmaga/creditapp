@@ -227,12 +227,12 @@ export function ProductAlerts() {
       </CardContent>
       {totalAlerts > 0 && (
         <CardFooter className="flex justify-center pt-0 border-t border-gray-200 dark:border-gray-800 p-4">
-          <Link href="/compras">
+          <Link href="/productos">
             <Button
               variant="outline"
               className="border-gray-300 text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
             >
-              Ver todas las compras
+              Ver todas los productos
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </Link>

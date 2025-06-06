@@ -103,14 +103,14 @@ export function Navbar() {
                   </span>
                 </Link>
                 <Link
-                  href="/compras"
+                  href="/productos"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive(
-                    "/compras"
+                    "/productos"
                   )}`}
                 >
                   <span className="flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4" />
-                    <span className="hidden md:block">Compras</span>
+                    <span className="hidden md:block">Productos</span>
                   </span>
                 </Link>
                 <Link
@@ -221,15 +221,15 @@ export function Navbar() {
                 </span>
               </Link>
               <Link
-                href="/compras"
+                href="/productos"
                 className={`block px-3 py-2 rounded-md text-sm font-medium ${isActive(
-                  "/compras"
+                  "/productos"
                 )}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 <span className="flex items-center gap-2">
                   <ShoppingCart className="h-4 w-4" />
-                  <span>Compras</span>
+                  <span>Productos"</span>
                 </span>
               </Link>
               <Link
