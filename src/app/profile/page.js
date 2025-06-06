@@ -93,8 +93,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Reemplaza la función handleEmailUpdate en src/app/profile/page.js
-
   const handleEmailUpdate = async (e) => {
     e.preventDefault();
     setSuccessMessage("");
@@ -105,7 +103,6 @@ export default function ProfilePage() {
       return;
     }
 
-    // Verificar que el nuevo email sea diferente al actual
     if (emailForm.newEmail === profile?.email) {
       setErrorMessage("El nuevo email debe ser diferente al actual");
       return;
@@ -116,15 +113,11 @@ export default function ProfilePage() {
     try {
       const result = await updateEmail(emailForm.newEmail, emailForm.password);
 
-      // Mensaje más detallado
       setSuccessMessage(
         `✅ ${result.message}\n\n📧 Revisa tu bandeja de entrada en: ${emailForm.newEmail}\n📁 Si no lo encuentras, revisa tu carpeta de spam\n⏰ El enlace expira en 24 horas`
       );
 
-      // Limpiar solo la contraseña, mantener el nuevo email para referencia
       setEmailForm({ ...emailForm, password: "" });
-
-      // NO redirigir automáticamente - dejar que el usuario lea el mensaje
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -200,232 +193,256 @@ export default function ProfilePage() {
 
   if (isLoading && !profile) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-900 to-gray-900 px-4">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto py-10 px-4 flex flex-col min-h-screen justify-center items-center bg-gradient-to-br from-blue-900 to-gray-900">
-      <h1 className="text-3xl font-bold mb-6 text-white">Mi Perfil</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-gray-900 py-10 px-4">
+      <div className="w-full max-w-2xl mx-auto flex flex-col space-y-6">
+        <h1 className="text-3xl font-bold text-center text-white">Mi Perfil</h1>
 
-      {successMessage && (
-        <Alert className="mb-6 bg-green-50 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{successMessage}</AlertDescription>
-        </Alert>
-      )}
+        {successMessage && (
+          <Alert className="bg-green-50 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{successMessage}</AlertDescription>
+          </Alert>
+        )}
 
-      {errorMessage && (
-        <Alert className="mb-6 bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{errorMessage}</AlertDescription>
-        </Alert>
-      )}
+        {errorMessage && (
+          <Alert className="bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
+        )}
 
-      <Tabs defaultValue="profile" className="space-y-6 w-4/12">
-        <TabsList className="grid grid-cols-4 w-full md:w-auto">
-          <TabsTrigger value="profile" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <span className="hidden md:inline">Información</span>
-          </TabsTrigger>
-          <TabsTrigger value="email" className="flex items-center gap-2">
-            <Mail className="h-4 w-4" />
-            <span className="hidden md:inline">Email</span>
-          </TabsTrigger>
-          <TabsTrigger value="password" className="flex items-center gap-2">
-            <Lock className="h-4 w-4" />
-            <span className="hidden md:inline">Contraseña</span>
-          </TabsTrigger>
-          <TabsTrigger value="delete" className="flex items-center gap-2">
-            <Trash className="h-4 w-4" />
-            <span className="hidden md:inline">Eliminar</span>
-          </TabsTrigger>
-        </TabsList>
-        {/* Pestaña de Perfil */}
+        <Tabs
+          defaultValue="profile"
+          className="w-full sm:w-8/12 md:w-4/12 mx-auto space-y-6"
+        >
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
+            <TabsTrigger
+              value="profile"
+              className="flex items-center justify-center gap-1 py-2"
+            >
+              <User className="h-5 w-5" />
+              <span className="hidden sm:inline">Información</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="email"
+              className="flex items-center justify-center gap-1 py-2"
+            >
+              <Mail className="h-5 w-5" />
+              <span className="hidden sm:inline">Email</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="password"
+              className="flex items-center justify-center gap-1 py-2"
+            >
+              <Lock className="h-5 w-5" />
+              <span className="hidden sm:inline">Contraseña</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="delete"
+              className="flex items-center justify-center gap-1 py-2"
+            >
+              <Trash className="h-5 w-5" />
+              <span className="hidden sm:inline">Eliminar</span>
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="profile">
-          <Card>
-            <CardHeader>
-              <CardTitle>Información del Perfil</CardTitle>
-              <CardDescription>
-                Actualiza tu información personal
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleProfileUpdate}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Nombre Completo</Label>
-                  <Input
-                    id="fullName"
-                    value={profileForm.fullName}
-                    onChange={(e) =>
-                      setProfileForm({
-                        ...profileForm,
-                        fullName: e.target.value,
-                      })
-                    }
-                    placeholder="Tu nombre completo"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">Nombre de la Empresa</Label>
-                  <Input
-                    id="companyName"
-                    value={profileForm.companyName}
-                    onChange={(e) =>
-                      setProfileForm({
-                        ...profileForm,
-                        companyName: e.target.value,
-                      })
-                    }
-                    placeholder="Nombre de tu empresa (opcional)"
-                  />
-                </div>
-                <div className="pt-2">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+          {/* Pestaña de Perfil */}
+          <TabsContent value="profile">
+            <Card>
+              <CardHeader>
+                <CardTitle>Información del Perfil</CardTitle>
+                <CardDescription>
+                  Actualiza tu información personal
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={handleProfileUpdate}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">Nombre Completo</Label>
+                    <Input
+                      id="fullName"
+                      value={profileForm.fullName}
+                      onChange={(e) =>
+                        setProfileForm({
+                          ...profileForm,
+                          fullName: e.target.value,
+                        })
+                      }
+                      placeholder="Tu nombre completo"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName">Nombre de la Empresa</Label>
+                    <Input
+                      id="companyName"
+                      value={profileForm.companyName}
+                      onChange={(e) =>
+                        setProfileForm({
+                          ...profileForm,
+                          companyName: e.target.value,
+                        })
+                      }
+                      placeholder="Nombre de tu empresa (opcional)"
+                    />
+                  </div>
+                  <p className="text-sm text-gray-200">
                     Email: {profile?.email}
                   </p>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Guardando..." : "Guardar Cambios"}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </TabsContent>
-        {/* Pestaña de Email */}
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={isLoading} className="w-full">
+                    {isLoading ? "Guardando..." : "Guardar Cambios"}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="email">
-          <EmailChangeComponent
-            profile={profile}
-            onProfileUpdate={(newProfile) => {
-              setProfile(newProfile);
-              setProfileForm({
-                fullName: newProfile.fullName || "",
-                companyName: newProfile.companyName || "",
-              });
-            }}
-          />
-        </TabsContent>
-        {/* Pestaña de Contraseña */}
-        <TabsContent value="password">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cambiar Contraseña</CardTitle>
-              <CardDescription>
-                Actualiza tu contraseña de acceso
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handlePasswordUpdate}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword">Contraseña Actual</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    value={passwordForm.currentPassword}
-                    onChange={(e) =>
-                      setPasswordForm({
-                        ...passwordForm,
-                        currentPassword: e.target.value,
-                      })
-                    }
-                    placeholder="••••••••"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">Nueva Contraseña</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    value={passwordForm.newPassword}
-                    onChange={(e) =>
-                      setPasswordForm({
-                        ...passwordForm,
-                        newPassword: e.target.value,
-                      })
-                    }
-                    placeholder="••••••••"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={passwordForm.confirmPassword}
-                    onChange={(e) =>
-                      setPasswordForm({
-                        ...passwordForm,
-                        confirmPassword: e.target.value,
-                      })
-                    }
-                    placeholder="••••••••"
-                  />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Actualizando..." : "Actualizar Contraseña"}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </TabsContent>
-        {/* Pestaña de Eliminar Cuenta */}
-        <TabsContent value="delete">
-          <Card className="border-red-200 dark:border-red-800">
-            <CardHeader>
-              <CardTitle className="text-red-600 dark:text-red-400">
-                Eliminar Cuenta
-              </CardTitle>
-              <CardDescription>
-                Eliminar tu cuenta es una acción permanente y no puede
-                deshacerse
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleAccountDelete}>
-              <CardContent className="space-y-4">
-                <Alert className="bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Esta acción eliminará permanentemente tu cuenta, tus
-                    clientes, préstamos y todos los datos relacionados.
-                  </AlertDescription>
-                </Alert>
-                <div className="space-y-2">
-                  <Label htmlFor="passwordDelete">Confirma tu contraseña</Label>
-                  <Input
-                    id="passwordDelete"
-                    type="password"
-                    value={deleteForm.password}
-                    onChange={(e) =>
-                      setDeleteForm({ ...deleteForm, password: e.target.value })
-                    }
-                    placeholder="Ingresa tu contraseña"
-                  />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  type="submit"
-                  variant="destructive"
-                  disabled={isLoading}
-                  className="bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
-                >
-                  {isLoading
-                    ? "Procesando..."
-                    : "Eliminar Cuenta Permanentemente"}
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          {/* Pestaña de Email */}
+          <TabsContent value="email">
+            <EmailChangeComponent
+              profile={profile}
+              onProfileUpdate={(newProfile) => {
+                setProfile(newProfile);
+                setProfileForm({
+                  fullName: newProfile.fullName || "",
+                  companyName: newProfile.companyName || "",
+                });
+              }}
+            />
+          </TabsContent>
+
+          {/* Pestaña de Contraseña */}
+          <TabsContent value="password">
+            <Card>
+              <CardHeader>
+                <CardTitle>Cambiar Contraseña</CardTitle>
+                <CardDescription>
+                  Actualiza tu contraseña de acceso
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={handlePasswordUpdate}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Contraseña Actual</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={passwordForm.currentPassword}
+                      onChange={(e) =>
+                        setPasswordForm({
+                          ...passwordForm,
+                          currentPassword: e.target.value,
+                        })
+                      }
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">Nueva Contraseña</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={passwordForm.newPassword}
+                      onChange={(e) =>
+                        setPasswordForm({
+                          ...passwordForm,
+                          newPassword: e.target.value,
+                        })
+                      }
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">
+                      Confirmar Contraseña
+                    </Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordForm({
+                          ...passwordForm,
+                          confirmPassword: e.target.value,
+                        })
+                      }
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={isLoading} className="w-full">
+                    {isLoading ? "Actualizando..." : "Actualizar Contraseña"}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </TabsContent>
+
+          {/* Pestaña de Eliminar Cuenta */}
+          <TabsContent value="delete">
+            <Card className="border-red-200 dark:border-red-800">
+              <CardHeader>
+                <CardTitle className="text-red-600 dark:text-red-400">
+                  Eliminar Cuenta
+                </CardTitle>
+                <CardDescription>
+                  Eliminar tu cuenta es una acción permanente y no puede
+                  deshacerse
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={handleAccountDelete}>
+                <CardContent className="space-y-4">
+                  <Alert className="bg-red-50 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Esta acción eliminará permanentemente tu cuenta, tus
+                      clientes, préstamos y todos los datos relacionados.
+                    </AlertDescription>
+                  </Alert>
+                  <div className="space-y-2">
+                    <Label htmlFor="passwordDelete">
+                      Confirma tu contraseña
+                    </Label>
+                    <Input
+                      id="passwordDelete"
+                      type="password"
+                      value={deleteForm.password}
+                      onChange={(e) =>
+                        setDeleteForm({
+                          ...deleteForm,
+                          password: e.target.value,
+                        })
+                      }
+                      placeholder="Ingresa tu contraseña"
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    type="submit"
+                    variant="destructive"
+                    disabled={isLoading}
+                    className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+                  >
+                    {isLoading
+                      ? "Procesando..."
+                      : "Eliminar Cuenta Permanentemente"}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

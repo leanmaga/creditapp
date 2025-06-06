@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,24 +31,29 @@ import {
 
 const SimuladorDePrestamos = () => {
   const [monto, setMonto] = useState("");
-  const [interestRate, setInterestRate] = useState(30); // Cambiado a número simple
+  const [interestRate, setInterestRate] = useState(30);
   const [tipoTiempo, setTipoTiempo] = useState("meses");
   const [cantidad, setCantidad] = useState("");
   const [loanDetails, setLoanDetails] = useState(null);
   const [error, setError] = useState(null);
 
-  const inputRef = React.useRef(null);
-
+  const inputRef = useRef(null);
   const appTitle = "Simulador de Préstamos Flexible";
 
-  // CÁLCULO SIMPLE COMO PEDISTE
+  // --- 1. Función auxiliar para singular/plural ---
+  const getLabelTiempo = (count, tipo) => {
+    if (count === 1) {
+      if (tipo === "meses") return "mes";
+      if (tipo === "semanas") return "semana";
+      if (tipo === "años") return "año";
+    }
+    return tipo; // plural por defecto
+  };
+
   const calcularPrestamo = useCallback(
     (montoSolicitado, tasaInteres, tipoTiempo, cantidadTiempo) => {
-      // Interés simple: Monto * (Tasa / 100)
       const interesTotal = montoSolicitado * (tasaInteres / 100);
       const montoTotal = montoSolicitado + interesTotal;
-
-      // Cuota por período (semanas, meses, años)
       const cuotaPorPeriodo =
         cantidadTiempo > 0 ? montoTotal / cantidadTiempo : 0;
 
@@ -72,7 +77,6 @@ const SimuladorDePrestamos = () => {
     }
   }, []);
 
-  // Auto-calcular cuando cambien los valores
   useEffect(() => {
     if (monto && cantidad && !error) {
       const montoNumerico = Number(monto);
@@ -113,23 +117,31 @@ const SimuladorDePrestamos = () => {
     }
   };
 
-  const formatNumber = (number) => {
-    return number.toLocaleString("es-AR", {
+  const handleInterestInputChange = (e) => {
+    const val = e.target.value;
+    if (/^\d{0,3}$/.test(val)) {
+      let num = Number(val);
+      if (num < 1) num = 1;
+      if (num > 200) num = 200;
+      setInterestRate(num);
+    }
+  };
+
+  const formatNumber = (number) =>
+    number.toLocaleString("es-AR", {
       style: "decimal",
       useGrouping: true,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-  };
 
-  const formatCurrency = (number) => {
-    return number.toLocaleString("es-AR", {
+  const formatCurrency = (number) =>
+    number.toLocaleString("es-AR", {
       style: "currency",
       currency: "ARS",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-  };
 
   const cardVariants = {
     hidden: { opacity: 0, y: 50 },
@@ -144,11 +156,11 @@ const SimuladorDePrestamos = () => {
   const getMinMax = () => {
     switch (tipoTiempo) {
       case "semanas":
-        return { min: 1, max: 52 }; // 1 semana a 1 año
+        return { min: 1, max: 52 };
       case "meses":
-        return { min: 1, max: 24 }; // 1 mes a 2 años
+        return { min: 1, max: 24 };
       case "años":
-        return { min: 1, max: 5 }; // 1 año a 5 años
+        return { min: 1, max: 5 };
       default:
         return { min: 1, max: 24 };
     }
@@ -199,15 +211,16 @@ const SimuladorDePrestamos = () => {
                 />
               </div>
 
-              {/* Tasa de Interés - SLIDER MEJORADO */}
+              {/* Tasa de Interés – SLIDER + INPUT SINCRONIZADOS */}
               <div className="space-y-3">
                 <Label className="text-gray-300 flex items-center gap-2">
                   <PercentCircle className="w-4 h-4" />
                   Tasa de Interés: {interestRate}%
                 </Label>
-                <div className="px-2">
-                  {/* SLIDER PERSONALIZADO VISIBLE */}
-                  <div className="relative">
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  {/* Slider */}
+                  <div className="flex-1 relative">
                     <input
                       type="range"
                       min="1"
@@ -246,16 +259,32 @@ const SimuladorDePrestamos = () => {
                         border: none;
                       }
                     `}</style>
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>1%</span>
+                      <span>100%</span>
+                      <span>200%</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>1%</span>
-                    <span>100%</span>
-                    <span>200%</span>
+
+                  {/* Input numérico */}
+                  <div className="w-full sm:w-24">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={interestRate}
+                      onChange={handleInterestInputChange}
+                      className="bg-black/20 text-white border-purple-500/30 text-center"
+                    />
+                    <p className="text-xs text-gray-400 text-center mt-1">
+                      1–200%
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-300 mt-2">
-                    💡 Interés simple: se aplica directo sobre el monto
-                  </p>
                 </div>
+
+                <p className="text-xs text-gray-300 mt-2">
+                  💡 Interés simple: se aplica directo sobre el monto
+                </p>
               </div>
 
               {/* Tipo de Tiempo */}
@@ -355,10 +384,15 @@ const SimuladorDePrestamos = () => {
                           </div>
                         </div>
 
+                        {/* → Aquí corregimos “1 meses” por “1 mes” usando getLabelTiempo ← */}
                         <div className="bg-black/20 p-4 rounded-lg">
                           <span className="text-sm text-gray-400">Plazo</span>
                           <div className="text-xl font-bold text-white">
-                            {loanDetails.plazoOriginal} {loanDetails.tipoTiempo}
+                            {loanDetails.plazoOriginal}{" "}
+                            {getLabelTiempo(
+                              loanDetails.plazoOriginal,
+                              loanDetails.tipoTiempo
+                            )}
                           </div>
                         </div>
 
@@ -388,15 +422,21 @@ const SimuladorDePrestamos = () => {
                         </div>
 
                         <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-500/30">
+                          {/* → Aquí usamos getLabelTiempo(1,…) para “Cuota por mes” ← */}
                           <span className="text-sm text-blue-400">
-                            Cuota por {loanDetails.tipoTiempo.slice(0, -1)}
+                            Cuota por{" "}
+                            {getLabelTiempo(1, loanDetails.tipoTiempo)}
                           </span>
                           <div className="text-2xl font-bold text-blue-300">
                             {formatCurrency(loanDetails.cuotaPorPeriodo)}
                           </div>
                           <span className="text-xs text-blue-400">
                             {formatCurrency(loanDetails.montoTotal)} ÷{" "}
-                            {loanDetails.plazoOriginal} {loanDetails.tipoTiempo}
+                            {loanDetails.plazoOriginal}{" "}
+                            {getLabelTiempo(
+                              loanDetails.plazoOriginal,
+                              loanDetails.tipoTiempo
+                            )}
                           </span>
                         </div>
                       </div>
