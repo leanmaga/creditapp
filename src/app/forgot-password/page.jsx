@@ -37,7 +37,7 @@ export default function ForgotPassword() {
         .eq("email", email)
         .limit(1);
 
-      // También verificar en auth.users si no encontramos en profiles
+      // También verificar en auth.users si no encontramos en profile
       if (!users || users.length === 0) {
         // Intentar verificar de otra manera
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
