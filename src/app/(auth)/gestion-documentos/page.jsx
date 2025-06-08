@@ -69,6 +69,7 @@ export default function DocumentManagementSystem() {
     stats,
     isLoading,
     isUploading,
+    isReady, // Importante: asegurarse de que isReady esté disponible
     filters,
     setFilters,
     uploadDocument,
@@ -106,6 +107,19 @@ export default function DocumentManagementSystem() {
   useEffect(() => {
     loadClients();
   }, []);
+
+  // UseEffect para debugging del estado del sistema
+  useEffect(() => {
+    console.log("Upload system state:", {
+      isReady,
+      isUploading,
+      clientId: uploadData.clientId,
+      cloudinaryConfig: {
+        cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+        uploadPreset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+      },
+    });
+  }, [isReady, isUploading, uploadData.clientId]);
 
   const documentTypes = [
     {
@@ -188,7 +202,7 @@ export default function DocumentManagementSystem() {
     handleFiles(files);
   }, []);
 
-  // Manejo de archivos
+  // Manejo de archivos con validaciones mejoradas
   const handleFiles = async (files) => {
     if (!uploadData.clientId) {
       toast({
@@ -199,9 +213,21 @@ export default function DocumentManagementSystem() {
       return;
     }
 
+    if (!isReady) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description:
+          "El sistema de archivos aún se está inicializando. Por favor, intenta nuevamente.",
+      });
+      return;
+    }
+
     try {
+      console.log("Starting file upload for files:", files);
       await uploadMultipleDocuments(files, uploadData);
     } catch (error) {
+      console.error("Error in handleFiles:", error);
       // El error ya se maneja en el hook
     }
   };
@@ -423,6 +449,16 @@ export default function DocumentManagementSystem() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Indicador de carga del sistema de archivos */}
+            {!isReady && (
+              <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200 flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Inicializando sistema de archivos...
+                </p>
+              </div>
+            )}
+
             {/* Área de drag & drop */}
             <div
               className={`border-2 border-dashed rounded-lg p-4 sm:p-6 lg:p-8 text-center transition-colors ${
@@ -452,14 +488,32 @@ export default function DocumentManagementSystem() {
                     JPG, PNG, PDF hasta 10MB
                   </p>
                   <Button
-                    onClick={() =>
-                      document.getElementById("file-upload").click()
-                    }
-                    disabled={!uploadData.clientId}
+                    onClick={() => {
+                      if (!uploadData.clientId) {
+                        toast({
+                          variant: "destructive",
+                          title: "Error",
+                          description:
+                            "Por favor selecciona un cliente primero",
+                        });
+                        return;
+                      }
+                      if (!isReady) {
+                        toast({
+                          variant: "destructive",
+                          title: "Error",
+                          description:
+                            "El sistema aún se está cargando. Por favor espera un momento.",
+                        });
+                        return;
+                      }
+                      document.getElementById("file-upload").click();
+                    }}
+                    disabled={!uploadData.clientId || !isReady || isUploading}
                     className="w-full sm:w-auto"
                     size="sm"
                   >
-                    Seleccionar Archivos
+                    {isUploading ? "Subiendo..." : "Seleccionar Archivos"}
                   </Button>
                   <input
                     id="file-upload"
@@ -467,7 +521,12 @@ export default function DocumentManagementSystem() {
                     multiple
                     accept="image/*,.pdf"
                     className="hidden"
-                    onChange={(e) => handleFiles([...e.target.files])}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        console.log("Files selected:", e.target.files);
+                        handleFiles([...e.target.files]);
+                      }
+                    }}
                   />
                 </>
               )}

@@ -10,6 +10,7 @@ import {
   deleteDocument,
   getDocumentStats,
 } from "@/lib/api-client";
+
 // Hook para cargar funciones de Cloudinary dinámicamente
 const useCloudinaryFunctions = () => {
   const [cloudinaryFunctions, setCloudinaryFunctions] = useState(null);
@@ -19,25 +20,65 @@ const useCloudinaryFunctions = () => {
       try {
         const functions = await import("@/lib/cloudinary");
         setCloudinaryFunctions(functions);
+        console.log("Cloudinary functions loaded successfully");
       } catch (error) {
-        console.warn("Cloudinary no disponible, usando funciones de respaldo");
-        try {
-          const fallbackFunctions = await import("@/lib/cloudinary-fallback");
-          setCloudinaryFunctions(fallbackFunctions);
-        } catch (fallbackError) {
-          console.error("Error cargando funciones de respaldo:", fallbackError);
-          // Usar implementaciones mínimas inline
-          setCloudinaryFunctions({
-            uploadToCloudinary: async () => ({
-              publicId: "mock",
-              url: "mock",
-              secureUrl: "mock",
-            }),
-            deleteFromCloudinary: async () => ({ success: true }),
-            validateFile: () => true,
-            generateUniqueFileName: (name) => `mock_${name}`,
-          });
-        }
+        console.error("Error loading Cloudinary functions:", error);
+        // Usar implementaciones mínimas inline como fallback
+        setCloudinaryFunctions({
+          uploadToCloudinary: async (file) => {
+            console.warn("Using mock upload function");
+            return {
+              publicId: `mock_${Date.now()}`,
+              url: `https://via.placeholder.com/400x300?text=${encodeURIComponent(
+                file.name
+              )}`,
+              secureUrl: `https://via.placeholder.com/400x300?text=${encodeURIComponent(
+                file.name
+              )}`,
+              format: file.type.split("/")[1] || "unknown",
+              bytes: file.size,
+            };
+          },
+          deleteFromCloudinary: async () => {
+            console.warn("Using mock delete function");
+            return { success: true };
+          },
+          validateFile: (file, options = {}) => {
+            const maxSize = options.maxSize || 10 * 1024 * 1024;
+            const allowedTypes = options.allowedTypes || [
+              "image/",
+              "application/pdf",
+            ];
+
+            if (file.size > maxSize) {
+              throw new Error(
+                `El archivo es demasiado grande. Máximo ${Math.round(
+                  maxSize / 1024 / 1024
+                )}MB`
+              );
+            }
+
+            const isValidType = allowedTypes.some(
+              (type) => file.type.startsWith(type) || file.type === type
+            );
+
+            if (!isValidType) {
+              throw new Error(
+                "Tipo de archivo no permitido. Solo se permiten imágenes y PDFs"
+              );
+            }
+
+            return true;
+          },
+          generateUniqueFileName: (originalName, clientId) => {
+            const timestamp = Date.now();
+            const randomString = Math.random().toString(36).substring(2, 8);
+            const extension = originalName.split(".").pop();
+            const baseName = originalName.split(".").slice(0, -1).join(".");
+            const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9]/g, "_");
+            return `${clientId}_${sanitizedBaseName}_${timestamp}_${randomString}.${extension}`;
+          },
+        });
       }
     };
 
@@ -46,9 +87,6 @@ const useCloudinaryFunctions = () => {
 
   return cloudinaryFunctions;
 };
-
-// 🔧 CORRECCIÓN: Mantener la función de corrección de stats si es necesaria
-// Esta función ya está incluida en api-client.js, pero la mantenemos aquí por compatibilidad
 
 export const useDocuments = () => {
   const { toast } = useToast();
@@ -119,11 +157,17 @@ export const useDocuments = () => {
     }
   }, []);
 
-  // Subir documento único
   const uploadDocument = useCallback(
     async (file, metadata) => {
-      if (!isReady) {
-        throw new Error("Sistema de archivos no está listo");
+      // Esperar a que Cloudinary esté listo
+      if (!isReady || !cloudinaryFunctions) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description:
+            "El sistema de archivos aún se está inicializando. Por favor, intenta nuevamente.",
+        });
+        return;
       }
 
       try {
@@ -141,6 +185,8 @@ export const useDocuments = () => {
           metadata.clientId
         );
 
+        console.log("Starting upload with metadata:", metadata);
+
         // Subir a Cloudinary
         const uploadResult = await cloudinaryFunctions.uploadToCloudinary(
           file,
@@ -155,6 +201,8 @@ export const useDocuments = () => {
             ],
           }
         );
+
+        console.log("Upload result:", uploadResult);
 
         // Crear documento en la base de datos
         const documentData = {
