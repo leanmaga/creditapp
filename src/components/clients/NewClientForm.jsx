@@ -46,7 +46,6 @@ export function NewClientForm() {
     setIsSubmitting(true);
 
     try {
-      // Validate required fields
       if (!clientData.name) {
         throw new Error("El nombre del cliente es obligatorio");
       }
@@ -61,7 +60,6 @@ export function NewClientForm() {
         description: "Ahora puedes agregar un préstamo",
       });
     } catch (error) {
-      console.error("Error creating client:", error);
       toast({
         variant: "destructive",
         title: "Error al crear el cliente",
@@ -77,8 +75,14 @@ export function NewClientForm() {
     router.push("/clientes");
   };
 
-  const handleClientCreated = (id) => {
-    router.push(`/clientes/${id}`);
+  const handleLoanSuccess = () => {
+    // Redirigir a la lista de clientes después de crear el préstamo
+    router.push("/clientes");
+  };
+
+  const handleLoanCancel = () => {
+    // Si cancela el préstamo, ir al cliente creado
+    router.push(`/clientes/${clientId}`);
   };
 
   return (
@@ -187,7 +191,8 @@ export function NewClientForm() {
             <NewLoanForm
               clientId={clientId}
               clientName={clientData.name}
-              onComplete={handleClientCreated}
+              onSuccess={handleLoanSuccess}
+              onCancel={handleLoanCancel}
             />
           )}
         </TabsContent>

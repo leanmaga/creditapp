@@ -91,7 +91,7 @@ export function RecentLoans() {
                     </div>
                     <div className="flex items-center text-xs text-gray-500 dark:text-gray-500 mt-1.5">
                       <Calendar className="h-3 w-3 mr-1" />
-                      {formatDate(loan.created_at)}
+                      {formatDate(loan.start_date)}
                     </div>
                   </div>
                   <Link

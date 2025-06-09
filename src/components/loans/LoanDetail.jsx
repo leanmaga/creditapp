@@ -10,12 +10,12 @@ import {
   CalendarClock,
   Banknote,
   CheckCircle2,
-  XCircle,
   Trash2,
   Clock,
   AlertTriangle,
   PercentCircle,
   TrendingUp,
+  Edit3,
 } from "lucide-react";
 import {
   Card,
@@ -23,7 +23,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +42,38 @@ import { PayInstallmentDialog } from "@/components/loans/PayInstallmentDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { fetchLoanById, deleteLoan } from "@/lib/api-client";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+
+// Función para formatear fechas correctamente sin problemas de zona horaria
+const formatDateSafe = (dateString) => {
+  if (!dateString) return "N/A";
+
+  try {
+    // Si la fecha viene en formato ISO, extraer solo la parte de la fecha
+    if (dateString.includes("T")) {
+      const datePart = dateString.split("T")[0];
+      const [year, month, day] = datePart.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    // Si viene en formato YYYY-MM-DD
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateString.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    // Fallback: usar Date pero ajustando timezone
+    const date = new Date(dateString + "T12:00:00"); // Agregar hora del mediodía para evitar problemas de timezone
+    return date.toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch (error) {
+    console.warn("Error formatting date:", dateString, error);
+    return dateString;
+  }
+};
 
 export function LoanDetail({ clientId, loanId }) {
   const router = useRouter();
@@ -57,12 +87,9 @@ export function LoanDetail({ clientId, loanId }) {
   useEffect(() => {
     const getLoanData = async () => {
       try {
-        console.log("Fetching loan data for:", { clientId, loanId });
         const data = await fetchLoanById(clientId, loanId);
-        console.log("Loan data received:", data);
         setLoan(data);
       } catch (error) {
-        console.error("Error fetching loan:", error);
         toast({
           variant: "destructive",
           title: "Error",
@@ -84,7 +111,6 @@ export function LoanDetail({ clientId, loanId }) {
       const data = await fetchLoanById(clientId, loanId);
       setLoan(data);
     } catch (error) {
-      console.error("Error refreshing loan data:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -105,7 +131,6 @@ export function LoanDetail({ clientId, loanId }) {
       });
       router.push(`/clientes/${clientId}`);
     } catch (error) {
-      console.error("Error deleting loan:", error);
       toast({
         variant: "destructive",
         title: "Error al eliminar",
@@ -284,6 +309,15 @@ export function LoanDetail({ clientId, loanId }) {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href={`/clientes/${clientId}/prestamos/${loanId}/editar`}>
+            <Button
+              variant="outline"
+              className="border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Edit3 className="h-4 w-4 mr-2" />
+              Editar
+            </Button>
+          </Link>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -402,7 +436,7 @@ export function LoanDetail({ clientId, loanId }) {
                 </span>
                 <span className="font-medium flex items-center text-gray-900 dark:text-gray-100">
                   <Calendar className="h-3.5 w-3.5 mr-1 text-gray-500 dark:text-gray-400" />
-                  {formatDate(loan.created_at)}
+                  {formatDateSafe(loan.start_date)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -464,15 +498,8 @@ export function LoanDetail({ clientId, loanId }) {
 
           <CardContent>
             {loan.installments && loan.installments.length > 0 ? (
-              /**
-               * A partir de aquí envuelvo la “tabla” en un contenedor
-               * con overflow-x-auto, y al propio grid le pongo min-w-max,
-               * para que en mobile salga scroll horizontal si la pantalla es
-               * más angosta que la anchura natural de las 12 columnas:
-               **/
               <div className="overflow-x-auto">
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-w-max">
-                  {/* Header de la “tabla” */}
                   <div className="grid grid-cols-12 py-3 px-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300">
                     <div className="col-span-1 font-medium">#</div>
                     <div className="col-span-3 font-medium">Vencimiento</div>
@@ -482,7 +509,6 @@ export function LoanDetail({ clientId, loanId }) {
                       Acción
                     </div>
                   </div>
-                  {/* Filas de la “tabla” */}
                   {loan.installments.map((installment) => (
                     <div
                       key={installment.id}
@@ -493,7 +519,7 @@ export function LoanDetail({ clientId, loanId }) {
                       </div>
                       <div className="col-span-3 flex items-center text-gray-900 dark:text-gray-100">
                         <CalendarClock className="h-3.5 w-3.5 mr-1.5 text-gray-500 dark:text-gray-400" />
-                        {formatDate(installment.due_date)}
+                        {formatDateSafe(installment.due_date)}
                       </div>
                       <div className="col-span-3 font-medium text-gray-900 dark:text-gray-100">
                         {formatCurrency(installment.amount || 0)}
@@ -502,7 +528,7 @@ export function LoanDetail({ clientId, loanId }) {
                         {getInstallmentStatusBadge(installment)}
                         {installment.paid && installment.payment_date && (
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Pagada el {formatDate(installment.payment_date)}
+                            Pagada el {formatDateSafe(installment.payment_date)}
                           </div>
                         )}
                       </div>

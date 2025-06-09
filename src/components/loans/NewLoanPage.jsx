@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import NewLoanForm from "@/components/loans/NewLoanForm";
 import { fetchClientById } from "@/lib/api-client";
 
 export function NewLoanPage({ clientId }) {
+  const router = useRouter();
   const [client, setClient] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -27,6 +29,15 @@ export function NewLoanPage({ clientId }) {
 
     getClientData();
   }, [clientId]);
+
+  const handleLoanSuccess = () => {
+    // Redirigir a la lista de clientes después de crear el préstamo
+    router.push("/clientes");
+  };
+
+  const handleCancel = () => {
+    router.push(`/clientes/${clientId}`);
+  };
 
   if (isLoading) {
     return (
@@ -70,6 +81,8 @@ export function NewLoanPage({ clientId }) {
         <NewLoanForm
           clientId={clientId}
           clientName={client?.name || "Cliente"}
+          onSuccess={handleLoanSuccess}
+          onCancel={handleCancel}
         />
       </Card>
     </div>

@@ -7,9 +7,17 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Edit3,
+  MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatDate, formatCurrency } from "@/lib/utils";
 
 export function LoansList({ loans, clientId, clientName }) {
@@ -90,9 +98,15 @@ export function LoansList({ loans, clientId, clientName }) {
   return (
     <div className="space-y-4">
       {loans.map((loan) => (
-        <Link key={loan.id} href={`/clientes/${clientId}/prestamos/${loan.id}`}>
-          <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-4 bg-white dark:bg-gray-950 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-900 hover:shadow-md group">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
+        <div
+          key={loan.id}
+          className="border border-gray-200 dark:border-gray-800 rounded-lg p-4 bg-white dark:bg-gray-950 transition-all duration-200 hover:shadow-md group"
+        >
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
+            <Link
+              href={`/clientes/${clientId}/prestamos/${loan.id}`}
+              className="flex-1"
+            >
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-900 dark:text-gray-100">
@@ -102,10 +116,18 @@ export function LoansList({ loans, clientId, clientName }) {
                 </div>
                 <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mt-1">
                   <CalendarClock className="h-3.5 w-3.5 mr-1" />
-                  <span>Otorgado el {formatDate(loan.created_at)}</span>
+                  <span>
+                    {loan.start_date &&
+                    loan.start_date !== loan.created_at?.split("T")[0]
+                      ? `Iniciado el ${formatDate(loan.start_date)}`
+                      : `Otorgado el ${formatDate(loan.created_at)}`}
+                  </span>
                 </div>
               </div>
-              <div className="flex flex-col items-start sm:items-end">
+            </Link>
+
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end">
                 <div className="text-sm text-gray-700 dark:text-gray-300">
                   {loan.months} {loan.months === 1 ? "mes" : "meses"} -{" "}
                   <span className="text-green-600 dark:text-green-400 font-medium">
@@ -119,16 +141,45 @@ export function LoansList({ loans, clientId, clientName }) {
                   </span>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-4 h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all duration-300 ease-in-out group-hover:bg-blue-700 dark:group-hover:bg-blue-600"
-                style={{ width: `${calculateProgress(loan)}%` }}
-              ></div>
+              {/* Menú de opciones */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                    <span className="sr-only">Opciones</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href={`/clientes/${clientId}/prestamos/${loan.id}`}>
+                      Ver detalles
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href={`/clientes/${clientId}/prestamos/${loan.id}/editar`}
+                    >
+                      <Edit3 className="h-4 w-4 mr-2" />
+                      Editar préstamo
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
-        </Link>
+
+          <div className="mt-4 h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all duration-300 ease-in-out"
+              style={{ width: `${calculateProgress(loan)}%` }}
+            ></div>
+          </div>
+        </div>
       ))}
     </div>
   );

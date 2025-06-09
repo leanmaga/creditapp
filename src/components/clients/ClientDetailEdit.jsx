@@ -56,11 +56,14 @@ export function ClientDetailEdit({ clientId }) {
             dni: data.dni || "",
             notes: data.notes || "",
           });
-        } else {
-          console.warn("No se recibieron datos para el cliente");
         }
       } catch (error) {
-        console.error("Error detallado:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "No se pudo cargar la información del cliente",
+        });
+        router.push(`/clientes/${clientId}`);
       } finally {
         setIsLoading(false);
       }
@@ -69,7 +72,7 @@ export function ClientDetailEdit({ clientId }) {
     if (clientId) {
       getClientData();
     }
-  }, [clientId]);
+  }, [clientId, router, toast]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -79,12 +82,15 @@ export function ClientDetailEdit({ clientId }) {
     }));
   };
 
-  // En el evento onSubmit del formulario
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
+      if (!clientData.name) {
+        throw new Error("El nombre del cliente es obligatorio");
+      }
+
       await updateClient(clientId, clientData);
 
       toast({
@@ -94,7 +100,6 @@ export function ClientDetailEdit({ clientId }) {
 
       router.push(`/clientes/${clientId}`);
     } catch (error) {
-      console.error("Error al actualizar:", error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -105,7 +110,6 @@ export function ClientDetailEdit({ clientId }) {
     }
   };
 
-  // Renderizado con estados de carga y formulario
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -195,8 +199,6 @@ export function ClientDetailEdit({ clientId }) {
               </div>
             </div>
 
-            {/* Resto de los campos del formulario... */}
-            {/* Teléfono, DNI, Email, Dirección, Notas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label

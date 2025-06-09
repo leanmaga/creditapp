@@ -2,17 +2,33 @@
 
 import { supabase } from "./supabase";
 
+// Helper function to get current user
+async function getCurrentUser() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuario no autenticado");
+  }
+  return user;
+}
+
+// Helper function for safe user check (returns null instead of throwing)
+async function getCurrentUserSafe() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+}
+
+// ==========================================
+// CLIENT MANAGEMENT
+// ==========================================
+
 export async function fetchClients() {
   try {
-    // Se obtiene el usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // Si no hay usuario, devolver array vacío
-    if (!user) {
-      return [];
-    }
+    const user = await getCurrentUserSafe();
+    if (!user) return [];
 
     const { data, error } = await supabase
       .from("client_loan_counts")
@@ -33,10 +49,7 @@ export async function fetchClients() {
 }
 
 export async function createClient(clientData) {
-  // Se obtiene el usuario actual
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   const { data, error } = await supabase
     .from("clients")
@@ -48,7 +61,7 @@ export async function createClient(clientData) {
         address: clientData.address || null,
         dni: clientData.dni || null,
         notes: clientData.notes || null,
-        user_id: user.id, // Añadir ID del usuario
+        user_id: user.id,
       },
     ])
     .select()
@@ -64,7 +77,6 @@ export async function createClient(clientData) {
 
 export async function fetchClientById(clientId, forEdit = false) {
   try {
-    // Para cualquier caso, primero obtén los datos completos del cliente
     const { data: clientDetails, error: clientDetailsError } = await supabase
       .from("clients")
       .select("*")
@@ -76,20 +88,13 @@ export async function fetchClientById(clientId, forEdit = false) {
       return null;
     }
 
-    // RLS asegurará que solo se obtengan préstamos del usuario actual
-    // No necesitas filtrar explícitamente por user_id en estas consultas
     if (forEdit) {
       return clientDetails;
     }
 
     const { data: loans, error: loansError } = await supabase
       .from("loans")
-      .select(
-        `
-        *,
-        installments(*)
-      `
-      )
+      .select("*, installments(*)")
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
 
@@ -102,37 +107,7 @@ export async function fetchClientById(clientId, forEdit = false) {
       loans: loans || [],
     };
   } catch (error) {
-    console.error("Error completo:", error);
-    throw error;
-  }
-}
-
-export async function fetchLoanById(clientId, loanId) {
-  try {
-    const { data: loan, error: loanError } = await supabase
-      .from("loans")
-      .select(
-        `
-        *,
-        clients(name),
-        installments(*)
-      `
-      )
-      .eq("id", loanId)
-      .eq("client_id", clientId)
-      .single();
-
-    if (loanError) {
-      console.error("Error fetching loan:", loanError);
-      throw new Error("Préstamo no encontrado");
-    }
-
-    return {
-      ...loan,
-      client_name: loan.clients?.name || "Cliente",
-    };
-  } catch (error) {
-    console.error("Error fetching loan:", error);
+    console.error("Error fetching client:", error);
     throw error;
   }
 }
@@ -162,7 +137,6 @@ export async function updateClient(clientId, clientData) {
 }
 
 export async function deleteClient(clientId) {
-  // Los préstamos y cuotas se eliminarán automáticamente por la restricción ON DELETE CASCADE
   const { error } = await supabase.from("clients").delete().eq("id", clientId);
 
   if (error) {
@@ -173,31 +147,346 @@ export async function deleteClient(clientId) {
   return true;
 }
 
+// ==========================================
+// LOAN MANAGEMENT - SIMPLIFIED
+// ==========================================
+
+export async function fetchLoanById(clientId, loanId) {
+  try {
+    const { data: loan, error: loanError } = await supabase
+      .from("loans")
+      .select("*, clients(name), installments(*)")
+      .eq("id", loanId)
+      .eq("client_id", clientId)
+      .single();
+
+    if (loanError) {
+      throw new Error("Préstamo no encontrado");
+    }
+
+    // Ordenar las cuotas por número de cuota
+    if (loan.installments && Array.isArray(loan.installments)) {
+      loan.installments.sort(
+        (a, b) => a.installment_number - b.installment_number
+      );
+    }
+
+    return {
+      ...loan,
+      client_name: loan.clients?.name || "Cliente",
+    };
+  } catch (error) {
+    throw error;
+  }
+}
+
 export async function createLoan(loanDetails) {
-  // Obtener usuario actual antes de llamar a la función RPC
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
-  // Llamar a la función RPC (ya no necesitas pasar user_id explícitamente,
-  // porque ahora la función RPC usa auth.uid() internamente)
-  const { data, error } = await supabase.rpc("create_loan_with_installments", {
-    p_client_id: loanDetails.clientId,
-    p_amount: loanDetails.amount,
-    p_interest_rate: loanDetails.interestRate,
-    p_months: loanDetails.months,
-  });
+  console.log("📥 createLoan recibió:", loanDetails);
 
-  if (error) {
-    console.error("Error creating loan:", error);
-    throw new Error(error.message);
+  // Validar datos básicos
+  if (
+    !loanDetails.clientId ||
+    !loanDetails.amount ||
+    !loanDetails.interestRate ||
+    !loanDetails.months
+  ) {
+    throw new Error("Faltan datos obligatorios del préstamo");
   }
 
-  return data; // Retorna el ID del préstamo creado
+  // Preparar parámetros para el RPC
+  const rpcParams = {
+    p_client_id: loanDetails.clientId,
+    p_amount: parseFloat(loanDetails.amount),
+    p_interest_rate: parseFloat(loanDetails.interestRate),
+    p_months: parseInt(loanDetails.months),
+  };
+
+  // Agregar fechas si están disponibles
+  if (loanDetails.startDate) {
+    rpcParams.p_start_date = loanDetails.startDate;
+  }
+
+  if (loanDetails.endDate) {
+    rpcParams.p_end_date = loanDetails.endDate;
+  }
+
+  // Indicar que se usan fechas personalizadas
+  if (loanDetails.startDate && loanDetails.endDate) {
+    rpcParams.p_custom_dates = true;
+  }
+
+  // ✅ NUEVO: Enviar fechas detalladas de cuotas si están disponibles
+  if (
+    loanDetails.installmentDates &&
+    Array.isArray(loanDetails.installmentDates) &&
+    loanDetails.installmentDates.length > 0
+  ) {
+    // Convertir array de fechas a formato que entienda PostgreSQL
+    rpcParams.p_installment_dates = loanDetails.installmentDates;
+    console.log("✅ Enviando fechas de cuotas:", loanDetails.installmentDates);
+  }
+
+  // ✅ NUEVO: Enviar montos calculados si están disponibles
+  if (loanDetails.totalAmount) {
+    rpcParams.p_total_amount = parseFloat(loanDetails.totalAmount);
+  }
+
+  if (loanDetails.monthlyPayment) {
+    rpcParams.p_monthly_payment = parseFloat(loanDetails.monthlyPayment);
+  }
+
+  if (loanDetails.interestAmount) {
+    rpcParams.p_interest_amount = parseFloat(loanDetails.interestAmount);
+  }
+
+  console.log("📤 Enviando a RPC create_loan_with_installments:", rpcParams);
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "create_loan_with_installments",
+      rpcParams
+    );
+
+    if (error) {
+      console.error("❌ Error en RPC:", error);
+      throw new Error(`Error del servidor: ${error.message}`);
+    }
+
+    console.log("✅ Préstamo creado exitosamente:", data);
+
+    // ✅ NUEVO: Si tenemos cuotas personalizadas, actualizarlas después de la creación
+    if (
+      loanDetails.customInstallments &&
+      Array.isArray(loanDetails.customInstallments) &&
+      data
+    ) {
+      try {
+        await updateCustomInstallments(data, loanDetails.customInstallments);
+        console.log("✅ Cuotas personalizadas actualizadas");
+      } catch (updateError) {
+        console.warn(
+          "⚠️ Error actualizando cuotas personalizadas:",
+          updateError
+        );
+        // No falla todo el préstamo si no se pueden actualizar las cuotas personalizadas
+      }
+    }
+
+    return data;
+  } catch (error) {
+    console.error("❌ Error creando préstamo:", error);
+    throw error;
+  }
+}
+
+export async function updateLoan(loanId, loanData) {
+  const user = await getCurrentUser();
+
+  try {
+    const { data: existingLoan, error: checkError } = await supabase
+      .from("loans")
+      .select("id, user_id")
+      .eq("id", loanId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (checkError || !existingLoan) {
+      throw new Error("Préstamo no encontrado o sin permisos");
+    }
+
+    const updateData = {
+      amount: loanData.amount,
+      interest_rate: loanData.interest_rate,
+      months: loanData.months,
+      interest_amount: loanData.interest_amount,
+      total_amount: loanData.total_amount,
+      monthly_payment: loanData.monthly_payment,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (loanData.start_date) {
+      updateData.start_date = loanData.start_date;
+    }
+
+    if (loanData.end_date) {
+      updateData.end_date = loanData.end_date;
+    }
+
+    const { data, error } = await supabase
+      .from("loans")
+      .update(updateData)
+      .eq("id", loanId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function updateCustomInstallments(loanId, customInstallments) {
+  if (!customInstallments || customInstallments.length === 0) {
+    return;
+  }
+
+  try {
+    const { data: existingInstallments, error: fetchError } = await supabase
+      .from("installments")
+      .select("id, installment_number")
+      .eq("loan_id", loanId)
+      .order("installment_number");
+
+    if (fetchError) {
+      throw new Error(`Error obteniendo cuotas: ${fetchError.message}`);
+    }
+
+    if (!existingInstallments || existingInstallments.length === 0) {
+      throw new Error("No se encontraron cuotas para actualizar");
+    }
+
+    const updatePromises = customInstallments.map(
+      async (customInstallment, index) => {
+        const existingInstallment = existingInstallments[index];
+
+        if (!existingInstallment) {
+          return;
+        }
+
+        // ✅ CORREGIDO: SÍ actualizar start_date ya que la tabla SÍ lo tiene
+        const updateData = {
+          due_date: customInstallment.dueDate,
+          amount: parseFloat(customInstallment.amount || 0),
+          start_date: customInstallment.startDate || null, // ← AGREGADO
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: updateError } = await supabase
+          .from("installments")
+          .update(updateData)
+          .eq("id", existingInstallment.id);
+
+        if (updateError) {
+          throw new Error(
+            `Error actualizando cuota ${customInstallment.installmentNumber}: ${updateError.message}`
+          );
+        }
+      }
+    );
+
+    await Promise.all(updatePromises);
+  } catch (error) {
+    // No lanzar el error para que el préstamo se cree aunque falle la actualización
+  }
+}
+
+export async function updateInstallment(
+  loanId,
+  installmentId,
+  installmentData
+) {
+  const user = await getCurrentUser();
+
+  try {
+    const { data: loan, error: loanError } = await supabase
+      .from("loans")
+      .select("id")
+      .eq("id", loanId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (loanError || !loan) {
+      throw new Error("Préstamo no encontrado o sin permisos");
+    }
+
+    const updateData = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (installmentData.dueDate) {
+      updateData.due_date = installmentData.dueDate;
+    }
+
+    if (installmentData.amount !== undefined) {
+      updateData.amount = parseFloat(installmentData.amount);
+    }
+
+    // ✅ AGREGADO: Actualizar start_date si se proporciona
+    if (installmentData.startDate) {
+      updateData.start_date = installmentData.startDate;
+    }
+
+    if (installmentData.paid !== undefined) {
+      updateData.paid = installmentData.paid;
+    }
+
+    if (installmentData.paymentDate) {
+      updateData.payment_date = installmentData.paymentDate;
+    }
+
+    const { data, error } = await supabase
+      .from("installments")
+      .update(updateData)
+      .eq("id", installmentId)
+      .eq("loan_id", loanId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ✅ NUEVA función: Obtener cronograma detallado de un préstamo
+export async function fetchLoanSchedule(loanId) {
+  const user = await getCurrentUserSafe();
+  if (!user) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("installments")
+      .select(
+        `
+        *,
+        loans!inner(
+          id,
+          amount,
+          interest_rate,
+          total_amount,
+          status,
+          user_id,
+          clients(id, name)
+        )
+      `
+      )
+      .eq("loan_id", loanId)
+      .eq("loans.user_id", user.id)
+      .order("installment_number");
+
+    if (error) {
+      console.error("Error fetching loan schedule:", error);
+      throw new Error(error.message);
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error in fetchLoanSchedule:", error);
+    throw error;
+  }
 }
 
 export async function deleteLoan(clientId, loanId) {
-  // Las cuotas se eliminarán automáticamente por la restricción ON DELETE CASCADE
   const { error } = await supabase
     .from("loans")
     .delete()
@@ -218,7 +507,6 @@ export async function payInstallment(
   installmentId,
   paymentDetails
 ) {
-  // Primero verificamos que el préstamo pertenezca al cliente
   const { data: loan, error: loanError } = await supabase
     .from("loans")
     .select("id")
@@ -231,7 +519,6 @@ export async function payInstallment(
     throw new Error("Préstamo no encontrado");
   }
 
-  // Actualizamos la cuota como pagada
   const { error } = await supabase
     .from("installments")
     .update({
@@ -247,19 +534,16 @@ export async function payInstallment(
     throw new Error(error.message);
   }
 
-  // El trigger en la base de datos actualizará automáticamente el estado del préstamo si todas las cuotas están pagadas
-
   return true;
 }
 
+// ==========================================
+// DASHBOARD & STATISTICS
+// ==========================================
+
 export async function fetchDashboardStats() {
   try {
-    // Obtener el usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // Si no hay usuario autenticado, devolver datos predeterminados
+    const user = await getCurrentUserSafe();
     if (!user) {
       return {
         totalClients: 0,
@@ -269,45 +553,31 @@ export async function fetchDashboardStats() {
       };
     }
 
-    // Obtener número total de clientes
-    const {
-      data: clientsData,
-      count: clientsCount,
-      error: clientsError,
-    } = await supabase
+    const { count: clientsCount } = await supabase
       .from("clients")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id);
 
-    // Obtener préstamos activos
-    const {
-      data: activeLoansData,
-      count: activeLoansCount,
-      error: loansError,
-    } = await supabase
+    const { count: activeLoansCount } = await supabase
       .from("loans")
       .select("id", { count: "exact", head: true })
       .eq("status", "active")
       .eq("user_id", user.id);
 
-    // Obtener monto total prestado
-    const { data: totalLentData, error: totalLentError } = await supabase
+    const { data: totalLentData } = await supabase
       .from("loans")
       .select("amount")
       .eq("user_id", user.id);
 
-    // Para las cuotas vencidas, primero obtener los IDs de los préstamos
-    const { data: loanIds, error: loanIdsError } = await supabase
+    const { data: loanIds } = await supabase
       .from("loans")
       .select("id")
       .eq("user_id", user.id);
 
-    // Si hay préstamos, usarlos para filtrar cuotas vencidas
     let overdueCount = 0;
     if (loanIds && loanIds.length > 0) {
       const loanIdValues = loanIds.map((loan) => loan.id);
-
-      const { count, error: overdueError } = await supabase
+      const { count } = await supabase
         .from("installments")
         .select("id", { count: "exact", head: true })
         .eq("paid", false)
@@ -330,7 +600,6 @@ export async function fetchDashboardStats() {
     };
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
-    // En caso de error, devolver objeto con valores predeterminados
     return {
       totalClients: 0,
       activeLoans: 0,
@@ -342,24 +611,12 @@ export async function fetchDashboardStats() {
 
 export async function fetchRecentLoans() {
   try {
-    // Obtener el usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // Si no hay usuario, devolver array vacío
-    if (!user) {
-      return [];
-    }
+    const user = await getCurrentUserSafe();
+    if (!user) return [];
 
     const { data, error } = await supabase
       .from("loans")
-      .select(
-        `
-        *,
-        clients(name)
-      `
-      )
+      .select("*, clients(name)")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(5);
@@ -369,7 +626,6 @@ export async function fetchRecentLoans() {
       return [];
     }
 
-    // Formatear la respuesta, asegurándose que data no sea null
     return (data || []).map((loan) => ({
       ...loan,
       client_name: loan.clients?.name || "Cliente",
@@ -382,45 +638,26 @@ export async function fetchRecentLoans() {
 
 export async function fetchUpcomingPayments() {
   try {
-    // Obtener el usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getCurrentUserSafe();
+    if (!user) return [];
 
-    // Si no hay usuario, devolver array vacío
-    if (!user) {
-      return [];
-    }
-
-    // Primero, obtener los IDs de los préstamos que pertenecen al usuario
-    const { data: userLoans, error: loansError } = await supabase
+    const { data: userLoans } = await supabase
       .from("loans")
       .select("id")
       .eq("user_id", user.id);
 
-    if (loansError || !userLoans || userLoans.length === 0) {
-      return [];
-    }
+    if (!userLoans || userLoans.length === 0) return [];
 
-    // Extraer los IDs de los préstamos
     const loanIds = userLoans.map((loan) => loan.id);
-
-    // Ahora, usar estos IDs para obtener las cuotas
-    const today = new Date();
     const nextMonth = new Date();
     nextMonth.setMonth(nextMonth.getMonth() + 1);
 
     const { data, error } = await supabase
       .from("installments")
-      .select(
-        `
-        *,
-        loans(id, months, client_id, user_id, clients(name))
-      `
-      )
+      .select("*, loans(id, months, client_id, user_id, clients(name))")
       .eq("paid", false)
       .lte("due_date", nextMonth.toISOString())
-      .in("loan_id", loanIds) // Usar IN con el array de IDs
+      .in("loan_id", loanIds)
       .order("due_date")
       .limit(5);
 
@@ -429,7 +666,6 @@ export async function fetchUpcomingPayments() {
       return [];
     }
 
-    // Formatear la respuesta, asegurándose que data no sea null
     return (data || []).map((installment) => ({
       ...installment,
       client_name: installment.loans?.clients?.name || "Cliente",
@@ -445,78 +681,58 @@ export async function fetchUpcomingPayments() {
 
 export async function fetchStatsData() {
   try {
-    // Obtener el usuario actual
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getCurrentUser();
 
-    // Obtener estadísticas de clientes
-    const { data: clientsData, error: clientsError } = await supabase
+    const { data: clientsData } = await supabase
       .from("clients")
       .select("*", { count: "exact" })
-      .eq("user_id", user.id); // Filtrar por usuario
+      .eq("user_id", user.id);
 
-    const clientsCount = clientsError ? 0 : clientsData?.length || 0;
+    const clientsCount = clientsData?.length || 0;
 
-    // Obtener préstamos activos
-    const { data: activeLoansData, error: activeLoansError } = await supabase
+    const { data: activeLoansData } = await supabase
       .from("loans")
       .select("*")
       .eq("status", "active")
-      .eq("user_id", user.id); // Filtrar por usuario
+      .eq("user_id", user.id);
 
-    const activeLoansCount = activeLoansError
-      ? 0
-      : activeLoansData?.length || 0;
+    const activeLoansCount = activeLoansData?.length || 0;
 
-    // Obtener préstamos completados
-    const { data: completedLoansData, error: completedLoansError } =
-      await supabase
-        .from("loans")
-        .select("*")
-        .eq("status", "completed")
-        .eq("user_id", user.id); // Filtrar por usuario
+    const { data: completedLoansData } = await supabase
+      .from("loans")
+      .select("*")
+      .eq("status", "completed")
+      .eq("user_id", user.id);
 
-    const completedLoansCount = completedLoansError
-      ? 0
-      : completedLoansData?.length || 0;
+    const completedLoansCount = completedLoansData?.length || 0;
 
-    // Obtener todos los préstamos para cálculos
-    const { data, error: loansError } = await supabase
+    const { data: loansData } = await supabase
       .from("loans")
       .select("amount, interest_amount, created_at")
-      .eq("user_id", user.id); // Filtrar por usuario
+      .eq("user_id", user.id);
 
-    // Usar una nueva variable en lugar de reasignar
-    const loansData = loansError ? [] : data || [];
-
-    // Obtener estadísticas de cuotas (necesitamos filtrar por usuario)
-    const { data: instData, error: installmentsError } = await supabase
+    const { data: installmentsData } = await supabase
       .from("installments")
       .select("*, loans!inner(user_id)")
-      .eq("loans.user_id", user.id); // Usamos una relación inner para filtrar por usuario
+      .eq("loans.user_id", user.id);
 
-    // Usar una nueva variable en lugar de reasignar
-    const installmentsData = installmentsError ? [] : instData || [];
+    const safeLoansData = loansData || [];
+    const safeInstallmentsData = installmentsData || [];
 
-    // 2. Cálculo seguro de totales
+    const paidInstallments = safeInstallmentsData.filter((inst) => inst.paid);
+    const pendingInstallments = safeInstallmentsData.filter(
+      (inst) => !inst.paid
+    );
+    const overdueInstallments = pendingInstallments.filter(
+      (inst) => new Date(inst.due_date) < new Date()
+    );
 
-    // Filtramos las cuotas según su estado
-    const paidInstallments = installmentsData.filter((inst) => inst.paid) || [];
-    const pendingInstallments =
-      installmentsData.filter((inst) => !inst.paid) || [];
-    const overdueInstallments =
-      pendingInstallments.filter(
-        (inst) => new Date(inst.due_date) < new Date()
-      ) || [];
-
-    // Calculamos totales de manera segura
-    const totalLent = loansData.reduce(
+    const totalLent = safeLoansData.reduce(
       (sum, loan) => sum + parseFloat(loan.amount || 0),
       0
     );
 
-    const totalInterest = loansData.reduce(
+    const totalInterest = safeLoansData.reduce(
       (sum, loan) => sum + parseFloat(loan.interest_amount || 0),
       0
     );
@@ -526,9 +742,6 @@ export async function fetchStatsData() {
       0
     );
 
-    // 3. Datos mensuales
-
-    // Obtenemos los últimos 6 meses
     const now = new Date();
     const monthlyData = [];
 
@@ -537,8 +750,7 @@ export async function fetchStatsData() {
       const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
       const monthName = monthStart.toLocaleString("es-AR", { month: "short" });
 
-      // Filtrar préstamos y cuotas de este mes
-      const monthLoans = loansData.filter((loan) => {
+      const monthLoans = safeLoansData.filter((loan) => {
         const loanDate = new Date(loan.created_at);
         return loanDate >= monthStart && loanDate <= monthEnd;
       });
@@ -548,7 +760,6 @@ export async function fetchStatsData() {
         return paymentDate >= monthStart && paymentDate <= monthEnd;
       });
 
-      // Calcular valores mensuales
       const prestado = monthLoans.reduce(
         (sum, loan) => sum + parseFloat(loan.amount || 0),
         0
@@ -572,7 +783,6 @@ export async function fetchStatsData() {
       });
     }
 
-    // 4. Retorno de datos estructurados
     return {
       totalClients: clientsCount,
       activeLoans: activeLoansCount,
@@ -595,8 +805,7 @@ export async function fetchStatsData() {
       ],
     };
   } catch (error) {
-    console.error("Error completo en fetchStatsData:", error);
-    // En lugar de lanzar error, devolvemos datos vacíos
+    console.error("Error fetching stats data:", error);
     return {
       totalClients: 0,
       activeLoans: 0,
@@ -617,14 +826,14 @@ export async function fetchStatsData() {
     };
   }
 }
+
+// ==========================================
+// PRODUCT REQUESTS
+// ==========================================
+
 export async function createProductRequest(requestData) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
-  if (!user) throw new Error("Usuario no autenticado");
-
-  // Calcular detalles del préstamo
   const interestAmount =
     (requestData.requestedPrice * requestData.interestRate) / 100;
   const totalAmount = requestData.requestedPrice + interestAmount;
@@ -663,20 +872,12 @@ export async function createProductRequest(requestData) {
 }
 
 export async function fetchProductRequests(status = null) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   let query = supabase
     .from("product_purchase_requests")
-    .select(
-      `
-      *,
-      clients(id, name, phone, email)
-    `
-    )
+    .select("*, clients(id, name, phone, email)")
     .eq("user_id", user.id)
     .order("request_date", { ascending: false });
 
@@ -695,11 +896,7 @@ export async function fetchProductRequests(status = null) {
 }
 
 export async function updateRequestStatus(requestId, status, notes = null) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const updateData = {
     status,
@@ -731,11 +928,7 @@ export async function updateRequestStatus(requestId, status, notes = null) {
 }
 
 export async function deleteProductRequest(requestId) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const { error } = await supabase
     .from("product_purchase_requests")
@@ -751,16 +944,13 @@ export async function deleteProductRequest(requestId) {
   return true;
 }
 
-// 2. PRODUCTOS COMPRADOS
+// ==========================================
+// PURCHASED PRODUCTS
+// ==========================================
 
 export async function createPurchasedProduct(purchaseData) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
-  if (!user) throw new Error("Usuario no autenticado");
-
-  // Usar la función RPC para aprobar solicitud y crear producto
   const { data, error } = await supabase.rpc("approve_product_request", {
     p_request_id: purchaseData.requestId,
     p_actual_price: parseFloat(purchaseData.actualPrice),
@@ -777,20 +967,13 @@ export async function createPurchasedProduct(purchaseData) {
 }
 
 export async function fetchPurchasedProducts(clientId = null) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   let query = supabase
     .from("purchased_products")
     .select(
-      `
-      *,
-      clients(id, name, phone, email),
-      product_purchase_requests(product_url, reason)
-    `
+      "*, clients(id, name, phone, email), product_purchase_requests(product_url, reason)"
     )
     .eq("user_id", user.id)
     .order("purchase_date", { ascending: false });
@@ -814,11 +997,7 @@ export async function updateProductStatus(
   status,
   deliveryDate = null
 ) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const updateData = {
     status,
@@ -845,13 +1024,12 @@ export async function updateProductStatus(
   return data;
 }
 
-// 3. PAGOS DE PRODUCTOS
+// ==========================================
+// PRODUCT PAYMENTS
+// ==========================================
 
 export async function fetchProductPayments(productId) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -870,11 +1048,7 @@ export async function fetchProductPayments(productId) {
 }
 
 export async function payProductInstallment(paymentId, paymentData) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const { data, error } = await supabase
     .from("product_payments")
@@ -900,10 +1074,7 @@ export async function payProductInstallment(paymentId, paymentData) {
 }
 
 export async function getOverdueProductPayments() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   const today = new Date().toISOString().split("T")[0];
@@ -911,11 +1082,7 @@ export async function getOverdueProductPayments() {
   const { data, error } = await supabase
     .from("product_payments")
     .select(
-      `
-      *,
-      purchased_products(id, product_name, client_id),
-      clients(name, phone)
-    `
+      "*, purchased_products(id, product_name, client_id), clients(name, phone)"
     )
     .eq("paid", false)
     .lt("due_date", today)
@@ -930,13 +1097,8 @@ export async function getOverdueProductPayments() {
   return data || [];
 }
 
-// 4. ESTADÍSTICAS Y REPORTES
-
 export async function getProductPurchaseStats() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) {
     return {
       pendingRequests: 0,
@@ -952,28 +1114,24 @@ export async function getProductPurchaseStats() {
   }
 
   try {
-    // Solicitudes pendientes
     const { count: pendingRequests } = await supabase
       .from("product_purchase_requests")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending")
       .eq("user_id", user.id);
 
-    // Solicitudes aprobadas para comprar
     const { count: approvedRequests } = await supabase
       .from("product_purchase_requests")
       .select("id", { count: "exact", head: true })
       .eq("status", "approved")
       .eq("user_id", user.id);
 
-    // Productos activos (comprados pero no completamente pagados)
     const { count: activeProducts } = await supabase
       .from("purchased_products")
       .select("id", { count: "exact", head: true })
       .neq("status", "completed")
       .eq("user_id", user.id);
 
-    // Ganancias realizadas (productos completados)
     const { data: completedProducts } = await supabase
       .from("purchased_products")
       .select("direct_profit, total_amount, agreed_client_price")
@@ -997,7 +1155,6 @@ export async function getProductPurchaseStats() {
 
     const totalProfits = directProfits + interestProfits;
 
-    // Capital invertido actualmente
     const { data: activeProductsData } = await supabase
       .from("purchased_products")
       .select("actual_purchase_price, total_paid")
@@ -1044,10 +1201,7 @@ export async function getProductPurchaseStats() {
 }
 
 export async function getProductPaymentAlerts() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return { overdue: [], upcoming: [] };
 
   const today = new Date().toISOString().split("T")[0];
@@ -1056,30 +1210,16 @@ export async function getProductPaymentAlerts() {
     .split("T")[0];
 
   try {
-    // Pagos vencidos
     const { data: overdue } = await supabase
       .from("product_payments")
-      .select(
-        `
-        *,
-        purchased_products(product_name),
-        clients(name, phone)
-      `
-      )
+      .select("*, purchased_products(product_name), clients(name, phone)")
       .eq("paid", false)
       .lt("due_date", today)
       .eq("user_id", user.id);
 
-    // Pagos próximos (próxima semana)
     const { data: upcoming } = await supabase
       .from("product_payments")
-      .select(
-        `
-        *,
-        purchased_products(product_name),
-        clients(name, phone)
-      `
-      )
+      .select("*, purchased_products(product_name), clients(name, phone)")
       .eq("paid", false)
       .gte("due_date", today)
       .lte("due_date", nextWeek)
@@ -1095,23 +1235,13 @@ export async function getProductPaymentAlerts() {
   }
 }
 
-// 5. FUNCIONES DE BÚSQUEDA Y UTILIDADES
-
 export async function searchProducts(searchTerm) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   const { data, error } = await supabase
     .from("purchased_products")
-    .select(
-      `
-      *,
-      clients(name, phone)
-    `
-    )
+    .select("*, clients(name, phone)")
     .or(
       `product_name.ilike.%${searchTerm}%, clients.name.ilike.%${searchTerm}%`
     )
@@ -1125,8 +1255,6 @@ export async function searchProducts(searchTerm) {
 
   return data || [];
 }
-
-// 6. INTEGRACIÓN CON SISTEMA EXISTENTE
 
 export async function fetchClientWithProducts(clientId) {
   try {
@@ -1143,11 +1271,7 @@ export async function fetchClientWithProducts(clientId) {
   }
 }
 
-// 7. FUNCIONES DE CONFIGURACIÓN
-
 export async function getProductPurchaseSettings() {
-  // Esta función puede expandirse para manejar configuraciones
-  // guardadas en Supabase en el futuro
   return {
     defaultInterestRates: {
       6: 25,
@@ -1181,20 +1305,12 @@ export async function getProductPurchaseSettings() {
 }
 
 export async function getClientProductHistory(clientId) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   const { data, error } = await supabase
     .from("purchased_products")
-    .select(
-      `
-      *,
-      product_payments(*)
-    `
-    )
+    .select("*, product_payments(*)")
     .eq("client_id", clientId)
     .eq("user_id", user.id)
     .order("purchase_date", { ascending: false });
@@ -1207,14 +1323,12 @@ export async function getClientProductHistory(clientId) {
   return data || [];
 }
 
-// FUNCIONES PARA GESTIÓN DE DOCUMENTOS
+// ==========================================
+// DOCUMENT MANAGEMENT
+// ==========================================
 
 export async function createDocument(documentData) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const { data, error } = await supabase
     .from("documents")
@@ -1235,12 +1349,7 @@ export async function createDocument(documentData) {
       notes: documentData.notes || null,
     })
     .select(
-      `
-      *,
-      clients(id, name),
-      loans(id),
-      purchased_products(id, product_name)
-    `
+      "*, clients(id, name), loans(id), purchased_products(id, product_name)"
     )
     .single();
 
@@ -1253,57 +1362,27 @@ export async function createDocument(documentData) {
 }
 
 export async function fetchDocuments(filters = {}) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   let query = supabase
     .from("documents")
     .select(
-      `
-      *,
-      clients(id, name),
-      loans(id),
-      purchased_products(id, product_name)
-    `
+      "*, clients(id, name), loans(id), purchased_products(id, product_name)"
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  // Aplicar filtros
-  if (filters.clientId) {
-    query = query.eq("client_id", filters.clientId);
-  }
-
-  if (filters.loanId) {
-    query = query.eq("loan_id", filters.loanId);
-  }
-
-  if (filters.productId) {
-    query = query.eq("product_id", filters.productId);
-  }
-
-  if (filters.documentType) {
+  if (filters.clientId) query = query.eq("client_id", filters.clientId);
+  if (filters.loanId) query = query.eq("loan_id", filters.loanId);
+  if (filters.productId) query = query.eq("product_id", filters.productId);
+  if (filters.documentType)
     query = query.eq("document_type", filters.documentType);
-  }
-
-  if (filters.verificationStatus) {
+  if (filters.verificationStatus)
     query = query.eq("verification_status", filters.verificationStatus);
-  }
-
-  if (filters.dateFrom) {
-    query = query.gte("created_at", filters.dateFrom);
-  }
-
-  if (filters.dateTo) {
-    query = query.lte("created_at", filters.dateTo);
-  }
-
-  if (filters.limit) {
-    query = query.limit(filters.limit);
-  }
+  if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
+  if (filters.dateTo) query = query.lte("created_at", filters.dateTo);
+  if (filters.limit) query = query.limit(filters.limit);
 
   const { data, error } = await query;
 
@@ -1316,11 +1395,7 @@ export async function fetchDocuments(filters = {}) {
 }
 
 export async function updateDocumentVerification(documentId, verificationData) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const updateData = {
     verification_status: verificationData.status,
@@ -1339,12 +1414,7 @@ export async function updateDocumentVerification(documentId, verificationData) {
     .eq("id", documentId)
     .eq("user_id", user.id)
     .select(
-      `
-      *,
-      clients(id, name),
-      loans(id),
-      purchased_products(id, product_name)
-    `
+      "*, clients(id, name), loans(id), purchased_products(id, product_name)"
     )
     .single();
 
@@ -1357,11 +1427,7 @@ export async function updateDocumentVerification(documentId, verificationData) {
 }
 
 export async function deleteDocument(documentId) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuario no autenticado");
+  const user = await getCurrentUser();
 
   const { error } = await supabase
     .from("documents")
@@ -1378,10 +1444,7 @@ export async function deleteDocument(documentId) {
 }
 
 export async function getDocumentStats() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) {
     return {
       totalDocuments: 0,
@@ -1395,21 +1458,14 @@ export async function getDocumentStats() {
   }
 
   try {
-    // Obtener todos los documentos del usuario
-    const { data: documents, error } = await supabase
+    const { data: documents } = await supabase
       .from("documents")
       .select("*")
       .eq("user_id", user.id);
 
-    if (error) {
-      console.error("Error fetching documents for stats:", error);
-      throw error;
-    }
-
     const docs = documents || [];
     const today = new Date().toISOString().split("T")[0];
 
-    // Calcular estadísticas manualmente
     return {
       totalDocuments: docs.length,
       verifiedDocuments: docs.filter(
@@ -1441,21 +1497,13 @@ export async function getDocumentStats() {
 }
 
 export async function searchDocuments(searchTerm) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUserSafe();
   if (!user) return [];
 
   const { data, error } = await supabase
     .from("documents")
     .select(
-      `
-      *,
-      clients(id, name),
-      loans(id),
-      purchased_products(id, product_name)
-    `
+      "*, clients(id, name), loans(id), purchased_products(id, product_name)"
     )
     .eq("user_id", user.id)
     .or(
@@ -1471,190 +1519,113 @@ export async function searchDocuments(searchTerm) {
   return data || [];
 }
 
-export const uploadToCloudinary = async (file, options = {}) => {
-  try {
-    // Verificar que las variables de entorno existen
-    if (
-      !process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ||
-      !process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
-    ) {
-      throw new Error(
-        "Cloudinary configuration missing. Please check your environment variables."
-      );
-    }
+// ==========================================
+// LOAN UTILITIES
+// ==========================================
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append(
-      "upload_preset",
-      process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
-    );
-
-    // Opciones adicionales
-    if (options.folder) {
-      formData.append("folder", options.folder);
-    }
-
-    if (options.publicId) {
-      formData.append("public_id", options.publicId);
-    }
-
-    // Tags para organización
-    const tags = ["prestamos-app", "documents"];
-    if (options.tags) {
-      tags.push(...options.tags);
-    }
-    formData.append("tags", tags.join(","));
-
-    // Log para debugging
-    console.log("Uploading to Cloudinary:", {
-      cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-      preset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-    });
-
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/auto/upload`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      const errorText = await response.text().catch(() => "Unknown error");
-      console.error("Cloudinary response error:", {
-        status: response.status,
-        errorData,
-        errorText,
-      });
-      throw new Error(
-        `Error uploading to Cloudinary: ${response.status} - ${
-          errorData?.error?.message || errorText
-        }`
-      );
-    }
-
-    const data = await response.json();
-    console.log("Upload successful:", data);
-
-    return {
-      publicId: data.public_id,
-      url: data.url,
-      secureUrl: data.secure_url,
-      format: data.format,
-      bytes: data.bytes,
-      width: data.width,
-      height: data.height,
-    };
-  } catch (error) {
-    console.error("Cloudinary upload error:", error);
-    throw error;
-  }
-};
-
-export const deleteFromCloudinary = async (publicId) => {
-  try {
-    const response = await fetch("/api/cloudinary/delete", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ publicId }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Error deleting from Cloudinary");
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error("Cloudinary delete error:", error);
-    throw error;
-  }
-};
-
-// Función para generar URLs de transformación
-export const getTransformedUrl = (publicId, transformations = {}) => {
-  const baseUrl = `https://res.cloudinary.com/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
-
-  const transformParams = [];
-
-  if (transformations.width) transformParams.push(`w_${transformations.width}`);
-  if (transformations.height)
-    transformParams.push(`h_${transformations.height}`);
-  if (transformations.crop) transformParams.push(`c_${transformations.crop}`);
-  if (transformations.quality)
-    transformParams.push(`q_${transformations.quality}`);
-  if (transformations.format)
-    transformParams.push(`f_${transformations.format}`);
-
-  const transformString =
-    transformParams.length > 0 ? `/${transformParams.join(",")}` : "";
-
-  return `${baseUrl}${transformString}/${publicId}`;
-};
-
-// Función para optimizar imágenes automáticamente
-export const getOptimizedImageUrl = (publicId, options = {}) => {
-  const defaultTransformations = {
-    quality: "auto",
-    format: "auto",
-    crop: "scale",
-    ...options,
-  };
-
-  return getTransformedUrl(publicId, defaultTransformations);
-};
-
-// Función para crear thumbnails
-export const getThumbnailUrl = (publicId, size = 150) => {
-  return getTransformedUrl(publicId, {
-    width: size,
-    height: size,
-    crop: "fill",
-    quality: "auto",
-    format: "auto",
+export async function calculateInstallmentDates(
+  startDate,
+  endDate,
+  numInstallments,
+  frequency = "monthly"
+) {
+  const { data, error } = await supabase.rpc("calculate_installment_dates", {
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_num_installments: numInstallments,
+    p_frequency: frequency,
   });
-};
 
-// Función para validar archivos antes de subirlos
-export const validateFile = (file, options = {}) => {
-  const maxSize = options.maxSize || 10 * 1024 * 1024; // 10MB por defecto
-  const allowedTypes = options.allowedTypes || ["image/", "application/pdf"];
-
-  if (file.size > maxSize) {
-    throw new Error(
-      `El archivo es demasiado grande. Máximo ${Math.round(
-        maxSize / 1024 / 1024
-      )}MB`
-    );
+  if (error) {
+    console.error("Error calculating installment dates:", error);
+    throw new Error(error.message);
   }
 
-  const isValidType = allowedTypes.some(
-    (type) => file.type.startsWith(type) || file.type === type
-  );
-  if (!isValidType) {
-    throw new Error(
-      "Tipo de archivo no permitido. Solo se permiten imágenes y PDFs"
-    );
+  return data;
+}
+
+export async function fetchLoanStatistics(filters = {}) {
+  try {
+    const user = await getCurrentUserSafe();
+    if (!user) return [];
+
+    let query = supabase
+      .from("loan_statistics_view")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.extended_status)
+      query = query.eq("extended_status", filters.extended_status);
+    if (filters.clientId) query = query.eq("client_id", filters.clientId);
+    if (filters.dateFrom) query = query.gte("start_date", filters.dateFrom);
+    if (filters.dateTo) query = query.lte("end_date", filters.dateTo);
+    if (filters.limit) query = query.limit(filters.limit);
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error fetching loan statistics:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error("Error fetching loan statistics:", error);
+    return [];
   }
+}
 
-  return true;
-};
+export async function fetchUpcomingDueLoans(days = 7) {
+  try {
+    const user = await getCurrentUserSafe();
+    if (!user) return [];
 
-// Función para generar nombre único de archivo
-export const generateUniqueFileName = (originalName, clientId) => {
-  const timestamp = new Date().getTime();
-  const randomString = Math.random().toString(36).substring(2, 8);
-  const extension = originalName.split(".").pop();
-  const baseName = originalName.split(".").slice(0, -1).join(".");
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
 
-  // Sanitizar el nombre base para evitar caracteres problemáticos
-  const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9]/g, "_");
+    const { data, error } = await supabase
+      .from("loan_statistics_view")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .lte("end_date", futureDate.toISOString().split("T")[0])
+      .gte("end_date", new Date().toISOString().split("T")[0])
+      .order("end_date");
 
-  return `${clientId}_${sanitizedBaseName}_${timestamp}_${randomString}.${extension}`;
-};
+    if (error) {
+      console.error("Error fetching upcoming due loans:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error("Error fetching upcoming due loans:", error);
+    return [];
+  }
+}
+
+export async function fetchOverdueLoans() {
+  try {
+    const user = await getCurrentUserSafe();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from("loan_statistics_view")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("extended_status", "overdue")
+      .order("end_date");
+
+    if (error) {
+      console.error("Error fetching overdue loans:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error("Error fetching overdue loans:", error);
+    return [];
+  }
+}

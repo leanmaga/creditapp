@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { CalendarClock, CalendarCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +15,38 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { payInstallment } from "@/lib/api-client";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+
+// Función para formatear fechas correctamente sin problemas de zona horaria
+const formatDateSafe = (dateString) => {
+  if (!dateString) return "N/A";
+
+  try {
+    // Si la fecha viene en formato ISO, extraer solo la parte de la fecha
+    if (dateString.includes("T")) {
+      const datePart = dateString.split("T")[0];
+      const [year, month, day] = datePart.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    // Si viene en formato YYYY-MM-DD
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateString.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    // Fallback: usar Date pero ajustando timezone
+    const date = new Date(dateString + "T12:00:00");
+    return date.toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch (error) {
+    console.warn("Error formatting date:", dateString, error);
+    return dateString;
+  }
+};
 
 export function PayInstallmentDialog({
   open,
@@ -26,7 +56,6 @@ export function PayInstallmentDialog({
   loanId,
   onSuccess,
 }) {
-  const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentDate, setPaymentDate] = useState(
@@ -52,7 +81,6 @@ export function PayInstallmentDialog({
       onOpenChange(false);
       if (onSuccess) onSuccess();
     } catch (error) {
-      console.error("Error registering payment:", error);
       toast({
         variant: "destructive",
         title: "Error al registrar el pago",
@@ -93,7 +121,7 @@ export function PayInstallmentDialog({
                 </span>
                 <span className="flex items-center text-blue-800 dark:text-blue-200">
                   <CalendarClock className="h-3.5 w-3.5 mr-1 text-blue-600 dark:text-blue-400" />
-                  {formatDate(installment.due_date)}
+                  {formatDateSafe(installment.due_date)}
                 </span>
               </div>
             </div>
