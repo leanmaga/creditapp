@@ -7,8 +7,8 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
-import NewLoanForm from "@/components/loans/NewLoanForm";
 import { fetchClientById } from "@/lib/api-client";
+import NewLoanForm from "./loan-form";
 
 export function NewLoanPage({ clientId }) {
   const router = useRouter();

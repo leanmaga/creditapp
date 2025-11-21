@@ -183,6 +183,10 @@ export async function fetchLoanById(clientId, loanId) {
 export async function createLoan(loanDetails) {
   const user = await getCurrentUser();
 
+  if (!user) {
+    throw new Error("Usuario no autenticado");
+  }
+
   console.log("📥 createLoan recibió:", loanDetails);
 
   // Validar datos básicos
@@ -197,6 +201,7 @@ export async function createLoan(loanDetails) {
 
   // Preparar parámetros para el RPC
   const rpcParams = {
+    p_user_id: user.id, // ← AGREGAR ESTO
     p_client_id: loanDetails.clientId,
     p_amount: parseFloat(loanDetails.amount),
     p_interest_rate: parseFloat(loanDetails.interestRate),
@@ -217,18 +222,17 @@ export async function createLoan(loanDetails) {
     rpcParams.p_custom_dates = true;
   }
 
-  // ✅ NUEVO: Enviar fechas detalladas de cuotas si están disponibles
+  // Enviar fechas detalladas de cuotas si están disponibles
   if (
     loanDetails.installmentDates &&
     Array.isArray(loanDetails.installmentDates) &&
     loanDetails.installmentDates.length > 0
   ) {
-    // Convertir array de fechas a formato que entienda PostgreSQL
     rpcParams.p_installment_dates = loanDetails.installmentDates;
     console.log("✅ Enviando fechas de cuotas:", loanDetails.installmentDates);
   }
 
-  // ✅ NUEVO: Enviar montos calculados si están disponibles
+  // Enviar montos calculados si están disponibles
   if (loanDetails.totalAmount) {
     rpcParams.p_total_amount = parseFloat(loanDetails.totalAmount);
   }
@@ -256,7 +260,7 @@ export async function createLoan(loanDetails) {
 
     console.log("✅ Préstamo creado exitosamente:", data);
 
-    // ✅ NUEVO: Si tenemos cuotas personalizadas, actualizarlas después de la creación
+    // Si tenemos cuotas personalizadas, actualizarlas después de la creación
     if (
       loanDetails.customInstallments &&
       Array.isArray(loanDetails.customInstallments) &&
@@ -270,7 +274,6 @@ export async function createLoan(loanDetails) {
           "⚠️ Error actualizando cuotas personalizadas:",
           updateError
         );
-        // No falla todo el préstamo si no se pueden actualizar las cuotas personalizadas
       }
     }
 
@@ -359,11 +362,11 @@ async function updateCustomInstallments(loanId, customInstallments) {
           return;
         }
 
-        // ✅ CORREGIDO: SÍ actualizar start_date ya que la tabla SÍ lo tiene
+        // ✅ Actualizar tanto start_date como due_date
         const updateData = {
           due_date: customInstallment.dueDate,
+          start_date: customInstallment.startDate,
           amount: parseFloat(customInstallment.amount || 0),
-          start_date: customInstallment.startDate || null, // ← AGREGADO
           updated_at: new Date().toISOString(),
         };
 
@@ -373,8 +376,9 @@ async function updateCustomInstallments(loanId, customInstallments) {
           .eq("id", existingInstallment.id);
 
         if (updateError) {
-          throw new Error(
-            `Error actualizando cuota ${customInstallment.installmentNumber}: ${updateError.message}`
+          console.error(
+            `Error actualizando cuota ${customInstallment.installmentNumber}:`,
+            updateError
           );
         }
       }
@@ -382,7 +386,8 @@ async function updateCustomInstallments(loanId, customInstallments) {
 
     await Promise.all(updatePromises);
   } catch (error) {
-    // No lanzar el error para que el préstamo se cree aunque falle la actualización
+    console.error("Error en updateCustomInstallments:", error);
+    // No lanzar error para que el préstamo se cree aunque falle la actualización
   }
 }
 

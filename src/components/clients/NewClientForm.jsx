@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/api-client";
-import NewLoanForm from "@/components/loans/NewLoanForm";
+import NewLoanForm from "../loans/loan-form";
 
 export function NewClientForm() {
   const router = useRouter();
