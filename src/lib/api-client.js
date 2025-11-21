@@ -31,7 +31,7 @@ export async function fetchClients() {
     if (!user) return [];
 
     const { data, error } = await supabase
-      .from("client_loan_counts")
+      .from("clients")
       .select("*")
       .eq("user_id", user.id)
       .order("name");
